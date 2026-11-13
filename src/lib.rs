@@ -27,19 +27,34 @@ pub use fixed::{Decimal, Fixed};
 pub use observer::{MarketData, ObservedEvent, RiskFactorObserver};
 pub use time::DateTime;
 
+use contracts::clm::ClmTerms;
+use contracts::com::ComTerms;
+use contracts::csh::CshTerms;
 use contracts::pam::PamTerms;
+use contracts::stk::StkTerms;
+use contracts::ump::UmpTerms;
 use terms::RawTerms;
 
 /// Any supported ACTUS contract.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Contract<const S: u32 = { fixed::DEFAULT_SCALE }> {
     Pam(PamTerms<S>),
+    Clm(ClmTerms<S>),
+    Ump(UmpTerms<S>),
+    Csh(CshTerms<S>),
+    Stk(StkTerms<S>),
+    Com(ComTerms<S>),
 }
 
 macro_rules! dispatch {
     ($self:ident, $c:ident => $e:expr) => {
         match $self {
             Contract::Pam($c) => $e,
+            Contract::Clm($c) => $e,
+            Contract::Ump($c) => $e,
+            Contract::Csh($c) => $e,
+            Contract::Stk($c) => $e,
+            Contract::Com($c) => $e,
         }
     };
 }
@@ -55,6 +70,11 @@ impl<const S: u32> Contract<S> {
         let ct = raw.req_text("contractType")?;
         Ok(match ct.as_str() {
             "PAM" => Contract::Pam(PamTerms::parse(raw)?),
+            "CLM" => Contract::Clm(ClmTerms::parse(raw)?),
+            "UMP" => Contract::Ump(UmpTerms::parse(raw)?),
+            "CSH" => Contract::Csh(CshTerms::parse(raw)?),
+            "STK" => Contract::Stk(StkTerms::parse(raw)?),
+            "COM" => Contract::Com(ComTerms::parse(raw)?),
             other => return Err(Error::UnknownContractType(other.to_string())),
         })
     }
