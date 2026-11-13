@@ -28,10 +28,14 @@ pub use observer::{MarketData, ObservedEvent, RiskFactorObserver};
 pub use time::DateTime;
 
 use contracts::capfl::CapflTerms;
+use contracts::cec::CecTerms;
+use contracts::ceg::CegTerms;
 use contracts::clm::ClmTerms;
 use contracts::com::ComTerms;
 use contracts::csh::CshTerms;
+use contracts::futur::FuturTerms;
 use contracts::fxout::FxoutTerms;
+use contracts::optns::OptnsTerms;
 use contracts::pam::PamTerms;
 use contracts::stk::StkTerms;
 use contracts::swaps::SwapsTerms;
@@ -52,6 +56,10 @@ pub enum Contract<const S: u32 = { fixed::DEFAULT_SCALE }> {
     Swppv(SwppvTerms<S>),
     Swaps(SwapsTerms<S>),
     Capfl(CapflTerms<S>),
+    Optns(OptnsTerms<S>),
+    Futur(FuturTerms<S>),
+    Ceg(CegTerms<S>),
+    Cec(CecTerms<S>),
 }
 
 macro_rules! dispatch {
@@ -67,6 +75,10 @@ macro_rules! dispatch {
             Contract::Swppv($c) => $e,
             Contract::Swaps($c) => $e,
             Contract::Capfl($c) => $e,
+            Contract::Optns($c) => $e,
+            Contract::Futur($c) => $e,
+            Contract::Ceg($c) => $e,
+            Contract::Cec($c) => $e,
         }
     };
 }
@@ -91,6 +103,10 @@ impl<const S: u32> Contract<S> {
             "SWPPV" => Contract::Swppv(SwppvTerms::parse(raw)?),
             "SWAPS" => Contract::Swaps(SwapsTerms::parse(raw)?),
             "CAPFL" => Contract::Capfl(CapflTerms::parse(raw)?),
+            "OPTNS" => Contract::Optns(OptnsTerms::parse(raw)?),
+            "FUTUR" => Contract::Futur(FuturTerms::parse(raw)?),
+            "CEG" => Contract::Ceg(CegTerms::parse(raw)?),
+            "CEC" => Contract::Cec(CecTerms::parse(raw)?),
             other => return Err(Error::UnknownContractType(other.to_string())),
         })
     }
