@@ -131,11 +131,10 @@ pub trait StateView<const S: u32> {
     /// Error if any numeric state is poisoned by overflow or division by zero.
     fn check(&self, context: &str) -> Result<()> {
         for v in self.variables() {
-            if let Some(Value::Number(n)) = self.get(*v) {
-                if n.is_poisoned() {
+            if let Some(Value::Number(n)) = self.get(*v)
+                && n.is_poisoned() {
                     return Err(Error::Arithmetic { context: format!("{context} ({})", v.name()) });
                 }
-            }
         }
         Ok(())
     }

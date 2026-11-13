@@ -74,7 +74,9 @@ impl Period {
     pub fn parse(s: &str) -> Result<Period> {
         let s = s.trim();
         let bad = || Error::InvalidTerm { term: "period".into(), value: s.into() };
-        let body = s.strip_prefix('P').ok_or_else(bad)?;
+        // Tolerate cycle notation (`P5DL0`) where a plain period is expected.
+        let p = s.strip_suffix("L0").or_else(|| s.strip_suffix("L1")).unwrap_or(s);
+        let body = p.strip_prefix('P').ok_or_else(bad)?;
         if body.is_empty() {
             return Err(bad());
         }

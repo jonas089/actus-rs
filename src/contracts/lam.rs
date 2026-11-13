@@ -171,9 +171,7 @@ impl<const S: u32> AmortizerTerms<S> {
             (anchor, n - 1)
         } else {
             let prev = schedule(Some(anchor), sd, Some(cycle), self.common.end_of_month, true)
-                .into_iter()
-                .filter(|t| *t < sd)
-                .next_back()
+                .into_iter().rfind(|t| *t < sd)
                 .unwrap_or(anchor);
             (prev, n)
         };

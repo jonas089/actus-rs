@@ -37,9 +37,7 @@ pub(crate) fn derived_maturity<const S: u32>(t: &AmortizerTerms<S>) -> Result<Da
         cycle.period.add_to(ied)
     } else {
         schedule(Some(anchor), sd, Some(cycle), t.common.end_of_month, true)
-            .into_iter()
-            .filter(|x| *x < sd)
-            .next_back()
+            .into_iter().rfind(|x| *x < sd)
             .unwrap_or(anchor)
     };
     let yf: Fixed<S> = t.day_counter.year_fraction(last, cycle.period.add_to(last));

@@ -7,13 +7,6 @@ fn check(ct: &str) {
         eprintln!("actus-tests not found; skipping {ct} (set ACTUS_TESTS_DIR)");
         return;
     };
-    // Cases embedding a contract type this build does not implement yet are reported, not
-    // failed; they start counting as soon as that type is registered.
-    let (pending, failures): (Vec<_>, Vec<_>) =
-        failures.into_iter().partition(|f| f.contains("unknown contract type"));
-    if !pending.is_empty() {
-        eprintln!("{ct}: {} case(s) pending unimplemented child types:\n{}", pending.len(), pending.join("\n"));
-    }
     if !failures.is_empty() {
         panic!("{ct}: {passed}/{total} passed\n{}", failures.join("\n"));
     }

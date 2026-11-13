@@ -225,7 +225,8 @@ impl<const S: u32> ContractModel<S> for PamTerms<S> {
         let ipac = initial_accrued_interest(
             &calc,
             self.nominal_interest_rate,
-            self.accrued_interest,
+            // Terms are role-neutral; the state is signed by the contract role.
+            self.accrued_interest.map(|a| self.common.role_sign() * a),
             &self.ip_schedule(),
             self.initial_exchange_date,
             nt,
@@ -314,7 +315,7 @@ impl<const S: u32> ContractModel<S> for PamTerms<S> {
                 s.notional_principal = r * self.notional_principal;
                 s.nominal_interest_rate = self.rate();
                 s.accrued_interest = match (self.accrued_interest, self.interest_payment_anchor) {
-                    (Some(a), _) => a,
+                    (Some(a), _) => r * a,
                     (None, Some(ipanx)) if ipanx < t => {
                         calc.yf(ipanx, t) * s.notional_principal * s.nominal_interest_rate
                     }

@@ -95,11 +95,10 @@ impl<const S: u32> ContractModel<S> for StkTerms<S> {
             for (i, t) in schedule(Some(a), end, Some(c), self.common.end_of_month, include_end).into_iter().enumerate() {
                 let mut e = Event::new(EventType::DV, t, bd.shift_event_time(t), cur, cid);
                 // A known next dividend amount fixes the first dividend.
-                if i == 0 {
-                    if let Some(v) = self.next_dividend_payment_amount {
+                if i == 0
+                    && let Some(v) = self.next_dividend_payment_amount {
                         e.value = v;
                     }
-                }
                 evs.push(e);
             }
         }
