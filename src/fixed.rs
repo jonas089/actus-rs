@@ -4,6 +4,11 @@
 //! default 18). Multiplication and division are computed in 256-bit intermediates and rounded
 //! back half-even (banker's rounding).
 //!
+//! Every operation rounds its result to `S` decimals, so precision is absolute, not relative:
+//! in `rate * year_fraction * notional` the first product is rounded before scaling by the
+//! notional, giving an error of about `notional * 10^-S` (1e-12 on 1,000,000 at 18 dp).
+//! Results are bit-for-bit deterministic on every platform.
+//!
 //! Overflow and division by zero never panic and never wrap: they produce a *poisoned* value
 //! (similar to a NaN) that propagates through all further arithmetic. The engine checks every
 //! payoff and state it produces and turns poison into [`crate::Error::Arithmetic`]. This keeps
@@ -450,3 +455,4 @@ mod tests {
         assert!((big * F::from_int(2)).is_poisoned());
     }
 }
+
