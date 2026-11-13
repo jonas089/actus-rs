@@ -87,7 +87,13 @@ pub fn market_data(case: &Json) -> MarketData<18> {
             }
         }
         md.events.push(ObservedEvent {
-            contract_id: e.get("contractId").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            // Events without a contract ID belong to the contract under test.
+            contract_id: e
+                .get("contractId")
+                .and_then(|v| v.as_str())
+                .or_else(|| case.get("terms").and_then(|t| t.get("contractID")).and_then(|v| v.as_str()))
+                .unwrap_or("")
+                .to_string(),
             event_type: ty,
             time: t,
             value: e.get("value").and_then(num).unwrap_or(F::ZERO),
