@@ -23,4 +23,4 @@ macro_rules! suites {
     ($($name:ident),*) => { $( #[test] fn $name() { check(stringify!($name)); } )* };
 }
 
-suites!(pam, clm, ump, csh, stk, com, fxout, swppv, swaps, capfl, optns, futur, ceg, cec);
+suites!(pam, clm, ump, csh, stk, com, fxout, swppv, swaps, capfl, optns, futur, ceg, cec, lam, lax, nam, ann);

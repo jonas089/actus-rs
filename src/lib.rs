@@ -35,6 +35,8 @@ use contracts::com::ComTerms;
 use contracts::csh::CshTerms;
 use contracts::futur::FuturTerms;
 use contracts::fxout::FxoutTerms;
+use contracts::lam::{AmortizerKind, AmortizerTerms};
+use contracts::lax::LaxTerms;
 use contracts::optns::OptnsTerms;
 use contracts::pam::PamTerms;
 use contracts::stk::StkTerms;
@@ -60,6 +62,10 @@ pub enum Contract<const S: u32 = { fixed::DEFAULT_SCALE }> {
     Futur(FuturTerms<S>),
     Ceg(CegTerms<S>),
     Cec(CecTerms<S>),
+    Lam(AmortizerTerms<S>),
+    Lax(LaxTerms<S>),
+    Nam(AmortizerTerms<S>),
+    Ann(AmortizerTerms<S>),
 }
 
 macro_rules! dispatch {
@@ -79,6 +85,10 @@ macro_rules! dispatch {
             Contract::Futur($c) => $e,
             Contract::Ceg($c) => $e,
             Contract::Cec($c) => $e,
+            Contract::Lam($c) => $e,
+            Contract::Lax($c) => $e,
+            Contract::Nam($c) => $e,
+            Contract::Ann($c) => $e,
         }
     };
 }
@@ -107,6 +117,10 @@ impl<const S: u32> Contract<S> {
             "FUTUR" => Contract::Futur(FuturTerms::parse(raw)?),
             "CEG" => Contract::Ceg(CegTerms::parse(raw)?),
             "CEC" => Contract::Cec(CecTerms::parse(raw)?),
+            "LAM" => Contract::Lam(AmortizerTerms::parse(raw, AmortizerKind::Lam)?),
+            "LAX" => Contract::Lax(LaxTerms::parse(raw)?),
+            "NAM" => Contract::Nam(AmortizerTerms::parse(raw, AmortizerKind::Nam)?),
+            "ANN" => Contract::Ann(AmortizerTerms::parse(raw, AmortizerKind::Ann)?),
             other => return Err(Error::UnknownContractType(other.to_string())),
         })
     }
