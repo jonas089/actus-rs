@@ -95,7 +95,7 @@ impl<const S: u32> ContractModel<S> for UmpTerms<S> {
         let ipac = initial_accrued_interest(
             &calc,
             self.nominal_interest_rate,
-            self.accrued_interest,
+            self.accrued_interest.map(|a| self.common.role_sign() * a),
             &self.ipci_schedule(sd),
             self.initial_exchange_date,
             nt,
@@ -175,7 +175,7 @@ impl<const S: u32> ContractModel<S> for UmpTerms<S> {
             EventType::IED => {
                 s.notional_principal = r * self.notional_principal;
                 s.nominal_interest_rate = self.rate();
-                s.accrued_interest = self.accrued_interest.unwrap_or(Fixed::ZERO);
+                s.accrued_interest = self.accrued_interest.map(|a| r * a).unwrap_or(Fixed::ZERO);
                 fx * r * -self.notional_principal
             }
             // Observed principal repayment (PR, value = amount repaid to the creator) or
@@ -218,7 +218,7 @@ impl<const S: u32> ContractModel<S> for UmpTerms<S> {
                 Fixed::ZERO
             }
             EventType::TD => {
-                let p = fx * r * (self.trade.price_at_termination_date + s0.accrued_interest + accrued);
+                let p = fx * (r * self.trade.price_at_termination_date + s0.accrued_interest + accrued);
                 s.notional_principal = Fixed::ZERO;
                 s.accrued_interest = Fixed::ZERO;
                 s.fee_accrued = Fixed::ZERO;

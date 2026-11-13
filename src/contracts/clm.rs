@@ -6,7 +6,9 @@
 //! at the call date and `IP` + `STD` (settlement) at the end of the notice period.
 
 use super::loan::{clip_events, LoanCalc, LoanState};
-use super::pam::{credit_event_performance, initial_fee_accrued, rate_reset_events};
+use super::pam::{
+    credit_event_performance, initial_accrued_interest, initial_fee_accrued, rate_reset_events,
+};
 use crate::contract::ContractModel;
 use crate::daycount::{DayCountConvention, DayCounter};
 use crate::error::{Error, Result};
@@ -169,9 +171,17 @@ impl<const S: u32> ContractModel<S> for ClmTerms<S> {
         let started = self.initial_exchange_date <= sd;
         let nt = if started { self.common.role_sign() * self.notional_principal } else { Fixed::ZERO };
         let ipnr = if started { self.rate() } else { Fixed::ZERO };
-        // Accrued interest at the status date is taken from the terms (zero if absent); it is
-        // not estimated from the last capitalization date (the official tests require this).
-        let ipac = if started { self.accrued_interest.unwrap_or(Fixed::ZERO) } else { Fixed::ZERO };
+        // Accrued interest at the status date: the (role-signed) term, else estimated from the
+        // last capitalization date (or IED) to the status date.
+        let ipac = initial_accrued_interest(
+            &calc,
+            self.nominal_interest_rate,
+            self.accrued_interest.map(|a| self.common.role_sign() * a),
+            &self.ipci_schedule(cycle_end.max(sd)),
+            self.initial_exchange_date,
+            nt,
+            ipnr,
+        );
         let loan = LoanState {
             status_date: sd,
             maturity_date: end.map(|e| e.maturity),
@@ -267,7 +277,7 @@ impl<const S: u32> ContractModel<S> for ClmTerms<S> {
             EventType::IED => {
                 s.notional_principal = r * self.notional_principal;
                 s.nominal_interest_rate = self.rate();
-                s.accrued_interest = self.accrued_interest.unwrap_or(Fixed::ZERO);
+                s.accrued_interest = self.accrued_interest.map(|a| r * a).unwrap_or(Fixed::ZERO);
                 fx * r * -self.notional_principal
             }
             EventType::XD => {

@@ -8,8 +8,8 @@ use crate::events::{sort_events, Event, EventType};
 use crate::fixed::Fixed;
 use crate::observer::RiskFactorObserver;
 use crate::terms::{
-    anchor, parse_day_counter, CommonTerms, ContractPerformance, FeeTerms, PenaltyType, PrepaymentTerms,
-    RateResetTerms, RawTerms, ScalingTerms, TradeTerms,
+    anchor, parse_day_counter, CommonTerms, ContractPerformance, FeeTerms, PenaltyType, PrepaymentEffect,
+    PrepaymentTerms, RateResetTerms, RawTerms, ScalingTerms, TradeTerms,
 };
 use crate::time::{schedule, Cycle, DateTime};
 
@@ -133,22 +133,43 @@ pub(crate) fn rate_reset_events<const S: u32>(
     evs
 }
 
-/// Unscheduled events observed for a lending contract: prepayments (with penalties),
-/// credit events and monitoring.
+/// Prepayment (PP), penalty (PY), credit (CE) and monitoring (AD) events of a lending contract.
+///
+/// Prepayments follow the spec: none at all unless `prepaymentEffect != N`; otherwise a PP
+/// event on every optionality date `S(OPANX, OPCL, end)` (anchor defaulting to IED; `end`
+/// itself excluded, a prepayment on the maturity date is just the redemption) plus every
+/// observed PP at other times. A PY event precedes each PP when a penalty type is set.
+/// The amount of a PP is the observed amount at that instant, else (see
+/// [`prepayment_amount`]) the prepayment-model rate, else zero.
 pub(crate) fn observed_loan_events<const S: u32>(
     calc: &LoanCalc<'_, S>,
     prepayment: &PrepaymentTerms<S>,
+    end: DateTime,
     obs: &dyn RiskFactorObserver<S>,
 ) -> Vec<Event<S>> {
     let mut out = Vec::new();
+    let mut prepayments: std::collections::BTreeMap<DateTime, Fixed<S>> =
+        std::collections::BTreeMap::new();
+    if prepayment.effect != PrepaymentEffect::N
+        && (prepayment.anchor.is_some() || prepayment.cycle.is_some())
+    {
+        for t in schedule(
+            prepayment.anchor,
+            end,
+            prepayment.cycle,
+            calc.common.end_of_month,
+            false,
+        ) {
+            if t < end {
+                prepayments.insert(t, Fixed::ZERO);
+            }
+        }
+    }
     for o in obs.events(&calc.common.contract_id) {
         match o.event_type {
             EventType::PP => {
-                let mut e = calc.event_at(o.time, EventType::PP);
-                e.value = o.value;
-                out.push(e);
-                if prepayment.penalty_type != PenaltyType::O {
-                    out.push(calc.event_at(o.time, EventType::PY));
+                if prepayment.effect != PrepaymentEffect::N {
+                    prepayments.insert(o.time, o.value);
                 }
             }
             EventType::CE | EventType::AD => {
@@ -165,7 +186,70 @@ pub(crate) fn observed_loan_events<const S: u32>(
             _ => {}
         }
     }
+    for (t, value) in prepayments {
+        // PY first: the penalty is computed on the pre-prepayment notional.
+        for ty in [EventType::PY, EventType::PP] {
+            if ty == EventType::PY && prepayment.penalty_type == PenaltyType::O {
+                continue;
+            }
+            let mut e = calc.event_at(t, ty);
+            e.value = value;
+            out.push(e);
+        }
+    }
     out
+}
+
+/// Signed principal prepaid by a PP event (or the PP that a PY event belongs to), given the
+/// pre-prepayment notional `nt`: the event's observed amount (unsigned, signed here by the
+/// contract role), else `rate * Nt` with the rate observed from the prepayment model, else 0.
+/// Never more than is outstanding.
+pub(crate) fn prepayment_amount<const S: u32>(
+    common: &CommonTerms,
+    prepayment: &PrepaymentTerms<S>,
+    ev: &Event<S>,
+    nt: Fixed<S>,
+    obs: &dyn RiskFactorObserver<S>,
+) -> Result<Fixed<S>> {
+    let amount = if !ev.value.is_zero() {
+        common.role_sign() * ev.value
+    } else if let Some(model) = prepayment.model_object_code.as_deref() {
+        obs.risk_factor(model, ev.schedule_time)? * nt
+    } else {
+        Fixed::ZERO
+    };
+    Ok(if amount.abs() > nt.abs() { nt } else { amount })
+}
+
+/// PY payoff (spec POF_PY_PAM), charged only when the accompanying prepayment is non-zero.
+pub(crate) fn penalty_payoff<const S: u32>(
+    calc: &LoanCalc<'_, S>,
+    prepayment: &PrepaymentTerms<S>,
+    rate_reset: &RateResetTerms<S>,
+    s0: &LoanState<S>,
+    ev: &Event<S>,
+    obs: &dyn RiskFactorObserver<S>,
+) -> Result<Fixed<S>> {
+    let t = ev.schedule_time;
+    if prepayment_amount(calc.common, prepayment, ev, s0.notional_principal, obs)?.is_zero() {
+        return Ok(Fixed::ZERO);
+    }
+    let fx = calc.fx(t, obs)?;
+    let r = calc.role_sign();
+    let c = fx * r * calc.yf(s0.status_date, t) * s0.notional_principal;
+    Ok(match prepayment.penalty_type {
+        PenaltyType::A => fx * r * prepayment.penalty_rate,
+        PenaltyType::N => c * prepayment.penalty_rate,
+        PenaltyType::I => {
+            let moc = rate_reset
+                .market_object_code
+                .as_deref()
+                .ok_or_else(|| Error::MissingTerm("marketObjectCodeOfRateReset".into()))?;
+            let m = obs.risk_factor(moc, t)?;
+            c * (s0.nominal_interest_rate - m).max(Fixed::ZERO)
+        }
+        PenaltyType::O => Fixed::ZERO,
+    })
 }
 
 /// Initial accrued interest: explicit term, else estimated over the current interest period.
@@ -276,7 +360,12 @@ impl<const S: u32> ContractModel<S> for PamTerms<S> {
             );
             evs.extend(calc.events(&times, EventType::SC));
         }
-        evs.extend(observed_loan_events(&calc, &self.prepayment, obs));
+        evs.extend(observed_loan_events(
+            &calc,
+            &self.prepayment,
+            self.maturity_date,
+            obs,
+        ));
         apply_termination(&mut evs, self.trade.termination_date, cur, cid);
         clip_events(&mut evs, self.common.status_date, to);
         sort_events(&mut evs);
@@ -334,28 +423,17 @@ impl<const S: u32> ContractModel<S> for PamTerms<S> {
                 p
             }
             EventType::PP => {
+                let amount = prepayment_amount(&self.common, &self.prepayment, ev, s0.notional_principal, obs)?;
                 s.accrued_interest += accrued;
                 calc.accrue_fee(&mut s, t);
-                let amount = r * ev.value;
                 s.notional_principal -= amount;
                 fx * amount
             }
             EventType::PY => {
+                let p = penalty_payoff(&calc, &self.prepayment, &self.rate_reset, s0, ev, obs)?;
                 s.accrued_interest += accrued;
                 calc.accrue_fee(&mut s, t);
-                let c = fx * r * calc.yf(s0.status_date, t) * s0.notional_principal;
-                match self.prepayment.penalty_type {
-                    PenaltyType::A => fx * r * self.prepayment.penalty_rate,
-                    PenaltyType::N => c * self.prepayment.penalty_rate,
-                    PenaltyType::I => {
-                        let moc = self.rate_reset.market_object_code.as_deref().ok_or_else(|| {
-                            Error::MissingTerm("marketObjectCodeOfRateReset".into())
-                        })?;
-                        let m = obs.risk_factor(moc, t)?;
-                        c * (s0.nominal_interest_rate - m).max(Fixed::ZERO)
-                    }
-                    PenaltyType::O => Fixed::ZERO,
-                }
+                p
             }
             EventType::FP => {
                 let p = calc.fee_payoff(s0, t, obs)?;
@@ -366,10 +444,11 @@ impl<const S: u32> ContractModel<S> for PamTerms<S> {
             EventType::PRD => {
                 s.accrued_interest += accrued;
                 calc.accrue_fee(&mut s, t);
-                fx * r * -(self.trade.price_at_purchase_date + s0.accrued_interest + accrued)
+                // Accrued interest is already signed by the role; only the price needs R.
+                fx * -(r * self.trade.price_at_purchase_date + s0.accrued_interest + accrued)
             }
             EventType::TD => {
-                let p = fx * r * (self.trade.price_at_termination_date + s0.accrued_interest + accrued);
+                let p = fx * (r * self.trade.price_at_termination_date + s0.accrued_interest + accrued);
                 s.notional_principal = Fixed::ZERO;
                 s.accrued_interest = Fixed::ZERO;
                 s.fee_accrued = Fixed::ZERO;

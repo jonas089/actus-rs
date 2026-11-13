@@ -21,11 +21,10 @@ Format: what / spec says / official tests (Java reference) do / what we implemen
   `exerciseDate` + `exerciseAmount`).
 - **XD sorts before IP at the same instant.** Generic event sequence puts XD (160) after IP (40);
   tests list XD, IP, STD at the same timestamp. Implemented a CLM-local order with XD first.
-- **No initial accrued-interest estimate.** Spec ("same as PAM") and the dictionary: if
-  `accruedInterest` is not given, estimate it from the last interest date to the status date.
-  Tests (clm03, 05, 06, 07, 10, 11 with status date after IED): accrued interest at the status
-  date is 0, i.e. one partial period of interest is silently lost. Implemented the test behaviour
-  (`accruedInterest` term or 0) for CLM.
+- **Initial accrued-interest estimate.** Spec ("same as PAM") and the dictionary: if
+  `accruedInterest` is not given, estimate it from the last IPCI date (or IED) to the status date.
+  Implemented. Tests clm03, 05–11, 14 assumed 0 and run with `accruedInterest: 0` injected
+  (conformance errata).
 - **Analysis horizon is ignored once the end is known.** clm07 has `to` = 2015-09-30 but the
   expected results run to repayment on 2015-10-21. Implemented: `to` only clips when there is
   neither a maturity date nor a call; otherwise the contract runs to repayment.
@@ -39,12 +38,11 @@ Format: what / spec says / official tests (Java reference) do / what we implemen
 
 - No maturity: projections require a horizon `to` (or a termination date); otherwise an error.
 - Principal changes only through observed `PR` (repayment) / `PI` (increase) events, value =
-  unsigned amount, sign applied by contract role. Not exercised by the official tests.
+  unsigned amount, sign applied by contract role. Not in the official tests; covered by
+  `tests/loan_behaviour.rs`.
 - Spec PR fee accrual for `FEB = A` uses an undefined `t^-`/`t^+`; we use the generic fee accrual.
-- Initial accrued interest follows the spec (estimate if not given); all official UMP tests start
-  before IED, so this is untested. Note that CLM, whose spec is identical here, had to use the
-  "no estimate" behaviour to pass its tests.
-- Termination (`TD`) uses the PAM formula `R * (PTD + accrued interest)`; matches ump09.
+- Initial accrued interest follows the spec (estimate if not given; term signed by role).
+- Termination (`TD`) uses the liability-correct `R·PTD + Ipac + accrual` (see core.md); ump09.
 
 ## CSH — Cash
 
@@ -63,7 +61,7 @@ Format: what / spec says / official tests (Java reference) do / what we implemen
 - Dividend observation uses the unshifted schedule date; the event itself is shifted by the BDC
   (stk09: 2017-01-01 Sunday paid 2017-01-02, observed at 2017-01-01).
 - Dividend anchor defaults to the purchase date when only a cycle is given (Java default).
-- `nextDividendPaymentAmount` (spec DV(fix)) fixes the first dividend; untested.
+- `nextDividendPaymentAmount` (spec DV(fix)) fixes the first dividend (`tests/loan_behaviour.rs`).
 - Dividends recur without end; we generate up to the termination date or the horizon.
 
 ## COM — Commodity

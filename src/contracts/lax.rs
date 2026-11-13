@@ -250,7 +250,7 @@ impl<const S: u32> ContractModel<S> for LaxTerms<S> {
                 schedule(b.interest_calculation_base_anchor, md, b.interest_calculation_base_cycle, eomc, false);
             evs.extend(calc.events(&times, EventType::IPCB));
         }
-        evs.extend(observed_loan_events(&calc, &b.prepayment, obs));
+        evs.extend(observed_loan_events(&calc, &b.prepayment, md, obs));
         apply_termination(&mut evs, b.trade.termination_date, cur, cid);
         clip_events(&mut evs, b.common.status_date, to.or(Some(md)));
         sort_events(&mut evs);
@@ -324,6 +324,14 @@ impl<const S: u32> ContractModel<S> for LaxTerms<S> {
                 };
                 s.status_date = t;
                 Ok((s, Fixed::ZERO))
+            }
+            EventType::PP => {
+                // LAX redemption amounts are contractual arrays: a prepayment only reduces the
+                // notional (later redemptions are capped at what is outstanding).
+                let (mut s, payoff) = b.step(s0, ev, obs)?;
+                s.next_principal_redemption_payment = s0.next_principal_redemption_payment;
+                s.maturity_date = s0.maturity_date;
+                Ok((s, payoff))
             }
             _ => b.step(s0, ev, obs),
         }
