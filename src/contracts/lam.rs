@@ -8,7 +8,7 @@
 use super::loan::{after_purchase, apply_termination, clip_events, LoanCalc, LoanState};
 use super::pam::{
     credit_event_performance, initial_accrued_interest, initial_fee_accrued, interest_events, observed_loan_events,
-    rate_reset_events, scaling_multiplier,
+    penalty_payoff, prepayment_amount, rate_reset_events, scaling_multiplier,
 };
 use super::{ann, nam};
 use crate::contract::ContractModel;
@@ -18,8 +18,8 @@ use crate::events::{sort_events, Event, EventType};
 use crate::fixed::Fixed;
 use crate::observer::RiskFactorObserver;
 use crate::terms::{
-    anchor, parse_day_counter, CommonTerms, ContractPerformance, FeeTerms, InterestCalculationBase, PenaltyType,
-    PrepaymentTerms, RateResetTerms, RawTerms, ScalingTerms, TradeTerms,
+    anchor, parse_day_counter, CommonTerms, ContractPerformance, FeeTerms, InterestCalculationBase,
+    PrepaymentEffect, PrepaymentTerms, RateResetTerms, RawTerms, ScalingTerms, TradeTerms,
 };
 use crate::time::{last_day_of_month, schedule, Cycle, DateTime, EndOfMonthConvention};
 
@@ -287,6 +287,101 @@ impl<const S: u32> AmortizerTerms<S> {
     }
 }
 
+impl<const S: u32> AmortizerTerms<S> {
+    /// Effect of a (non-zero) prepayment on the amortization, per `prepaymentEffect`:
+    ///
+    /// * `A` (reduce the amortization amount, keep maturity): LAM spreads the remaining notional
+    ///   evenly over the remaining redemption dates (maturity included); ANN recomputes the
+    ///   annuity amount for the new notional; NAM scales its total payment by the notional
+    ///   reduction. Used by the following PR events.
+    /// * `M` (keep the payment, shorten maturity): the payment is unchanged, so the loan is repaid
+    ///   early; the `maturityDate` state is moved to the redemption date at which the notional is
+    ///   projected to reach zero at the current rate. Later redemptions are capped at the
+    ///   outstanding notional, so they become zero once it is repaid.
+    /// * `N`: no prepayments are generated at all.
+    ///
+    /// `s` is the post-prepayment state with its status date already set to the event time.
+    fn apply_prepayment_effect(&self, s0: &LoanState<S>, s: &mut LoanState<S>, t: DateTime) {
+        match self.prepayment.effect {
+            PrepaymentEffect::A => {
+                let prnxt = match self.kind {
+                    AmortizerKind::Lam => {
+                        let n = schedule(
+                            Some(self.principal_redemption_anchor),
+                            self.maturity_date,
+                            self.principal_redemption_cycle,
+                            self.common.end_of_month,
+                            true,
+                        )
+                        .into_iter()
+                        .filter(|x| *x > t)
+                        .count();
+                        if n == 0 {
+                            return;
+                        }
+                        s.notional_principal.abs() / Fixed::from_int(n as i64)
+                    }
+                    AmortizerKind::Ann => self.common.role_sign() * ann::annuity_amount(self, s),
+                    AmortizerKind::Nam => {
+                        let before = s0.notional_principal.abs();
+                        if before.is_zero() {
+                            return;
+                        }
+                        s0.next_principal_redemption_payment.unwrap_or(Fixed::ZERO)
+                            * s.notional_principal.abs()
+                            / before
+                    }
+                };
+                s.next_principal_redemption_payment = Some(prnxt);
+            }
+            PrepaymentEffect::M => s.maturity_date = Some(self.projected_repayment_date(s, t)),
+            PrepaymentEffect::N => {}
+        }
+    }
+
+    /// First redemption date after `t` at which the notional is projected to be fully repaid
+    /// with the current payment and rate (the contractual maturity if it never is).
+    pub(crate) fn projected_repayment_date(&self, s: &LoanState<S>, t: DateTime) -> DateTime {
+        let times = schedule(
+            Some(self.principal_redemption_anchor),
+            self.maturity_date,
+            self.principal_redemption_cycle,
+            self.common.end_of_month,
+            true,
+        );
+        let prnxt = s
+            .next_principal_redemption_payment
+            .unwrap_or(Fixed::ZERO)
+            .abs();
+        let rate = s.nominal_interest_rate;
+        let mut nt = s.notional_principal.abs();
+        let mut interest_due = s.accrued_interest.abs();
+        let mut prev = t;
+        for ti in times.into_iter().filter(|x| *x > t) {
+            if nt.is_zero() || ti >= self.maturity_date {
+                break;
+            }
+            let principal = match self.kind {
+                AmortizerKind::Lam => prnxt,
+                AmortizerKind::Nam | AmortizerKind::Ann => {
+                    let yf: Fixed<S> = self.day_counter.year_fraction(prev, ti);
+                    prnxt - interest_due - yf * rate * nt
+                }
+            };
+            interest_due = Fixed::ZERO;
+            if !principal.is_positive() {
+                return self.maturity_date;
+            }
+            nt = (nt - principal).max(Fixed::ZERO);
+            if nt.is_zero() {
+                return ti;
+            }
+            prev = ti;
+        }
+        self.maturity_date
+    }
+}
+
 impl<const S: u32> ContractModel<S> for AmortizerTerms<S> {
     type State = LoanState<S>;
 
@@ -304,9 +399,7 @@ impl<const S: u32> ContractModel<S> for AmortizerTerms<S> {
         let ipac = initial_accrued_interest(
             &calc,
             self.nominal_interest_rate,
-            // The official tests expect no estimate of interest accrued before the status date
-            // when `accruedInterest` is not given (see docs/notes/loans.md).
-            Some(self.signed_accrued_term().unwrap_or(Fixed::ZERO)),
+            self.signed_accrued_term(),
             &self.ip_schedule(),
             self.initial_exchange_date,
             ipcb,
@@ -366,7 +459,7 @@ impl<const S: u32> ContractModel<S> for AmortizerTerms<S> {
             );
             evs.extend(calc.events(&times, EventType::IPCB));
         }
-        evs.extend(observed_loan_events(&calc, &self.prepayment, obs));
+        evs.extend(observed_loan_events(&calc, &self.prepayment, md, obs));
         apply_termination(&mut evs, self.trade.termination_date, cur, cid);
         clip_events(&mut evs, self.common.status_date, to.or(Some(md)));
         sort_events(&mut evs);
@@ -444,29 +537,22 @@ impl<const S: u32> ContractModel<S> for AmortizerTerms<S> {
                 p
             }
             EventType::PP => {
+                let amount = prepayment_amount(&self.common, &self.prepayment, ev, s0.notional_principal, obs)?;
                 s.accrued_interest += accrued;
                 calc.accrue_fee(&mut s, t);
-                let amount = r * ev.value;
                 s.notional_principal -= amount;
                 follow_nt(&mut s, self.interest_calculation_base == InterestCalculationBase::NT);
+                if !amount.is_zero() {
+                    s.status_date = t;
+                    self.apply_prepayment_effect(s0, &mut s, t);
+                }
                 fx * amount
             }
             EventType::PY => {
+                let p = penalty_payoff(&calc, &self.prepayment, &self.rate_reset, s0, ev, obs)?;
                 s.accrued_interest += accrued;
                 calc.accrue_fee(&mut s, t);
-                let c = fx * r * calc.yf(s0.status_date, t) * s0.notional_principal;
-                match self.prepayment.penalty_type {
-                    PenaltyType::A => fx * r * self.prepayment.penalty_rate,
-                    PenaltyType::N => c * self.prepayment.penalty_rate,
-                    PenaltyType::I => {
-                        let moc = self.rate_reset.market_object_code.as_deref().ok_or_else(|| {
-                            Error::MissingTerm("marketObjectCodeOfRateReset".into())
-                        })?;
-                        let m = obs.risk_factor(moc, t)?;
-                        c * (s0.nominal_interest_rate - m).max(Fixed::ZERO)
-                    }
-                    PenaltyType::O => Fixed::ZERO,
-                }
+                p
             }
             EventType::FP => {
                 let p = calc.fee_payoff(s0, t, obs)?;
@@ -477,10 +563,11 @@ impl<const S: u32> ContractModel<S> for AmortizerTerms<S> {
             EventType::PRD => {
                 s.accrued_interest += accrued;
                 calc.accrue_fee(&mut s, t);
-                fx * r * -(self.trade.price_at_purchase_date + s0.accrued_interest + accrued)
+                // Accrued interest is already signed by the role; only the price needs R.
+                fx * -(r * self.trade.price_at_purchase_date + s0.accrued_interest + accrued)
             }
             EventType::TD => {
-                let p = fx * r * (self.trade.price_at_termination_date + s0.accrued_interest + accrued);
+                let p = fx * (r * self.trade.price_at_termination_date + s0.accrued_interest + accrued);
                 s.notional_principal = Fixed::ZERO;
                 s.accrued_interest = Fixed::ZERO;
                 s.fee_accrued = Fixed::ZERO;

@@ -452,6 +452,10 @@ pub struct PrepaymentTerms<const S: u32> {
     pub cycle: Option<Cycle>,
     pub penalty_type: PenaltyType,
     pub penalty_rate: Fixed<S>,
+    /// Risk factor giving the prepayment *rate* (fraction of the outstanding notional prepaid)
+    /// at scheduled optionality dates without an observed prepayment
+    /// (`objectCodeOfPrepaymentModel`).
+    pub model_object_code: Option<String>,
 }
 
 impl<const S: u32> PrepaymentTerms<S> {
@@ -462,6 +466,7 @@ impl<const S: u32> PrepaymentTerms<S> {
             cycle: raw.cycle("cycleOfOptionality")?,
             penalty_type: raw.enum_or("penaltyType", PenaltyType::O)?,
             penalty_rate: raw.fixed_or("penaltyRate", Fixed::ZERO)?,
+            model_object_code: raw.text("objectCodeOfPrepaymentModel"),
         })
     }
 }
