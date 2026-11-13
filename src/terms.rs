@@ -303,7 +303,7 @@ impl CommonTerms {
     pub fn parse(raw: &RawTerms) -> Result<Self> {
         let calendar = match raw.text("calendar").as_deref() {
             Some("MF") | Some("MondayToFriday") => Calendar::MondayToFriday,
-            Some("NC") | Some("NoCalendar") | Some("NoHoliday") | None => Calendar::NoHoliday,
+            Some("NC") | Some("NoCalendar") | Some("NOCALENDAR") | Some("NoHoliday") | None => Calendar::NoHoliday,
             Some(other) => return Err(Error::invalid("calendar", other)),
         };
         Ok(CommonTerms {

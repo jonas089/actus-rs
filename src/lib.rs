@@ -27,19 +27,31 @@ pub use fixed::{Decimal, Fixed};
 pub use observer::{MarketData, ObservedEvent, RiskFactorObserver};
 pub use time::DateTime;
 
+use contracts::capfl::CapflTerms;
+use contracts::fxout::FxoutTerms;
 use contracts::pam::PamTerms;
+use contracts::swaps::SwapsTerms;
+use contracts::swppv::SwppvTerms;
 use terms::RawTerms;
 
 /// Any supported ACTUS contract.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Contract<const S: u32 = { fixed::DEFAULT_SCALE }> {
     Pam(PamTerms<S>),
+    Fxout(FxoutTerms<S>),
+    Swppv(SwppvTerms<S>),
+    Swaps(SwapsTerms<S>),
+    Capfl(CapflTerms<S>),
 }
 
 macro_rules! dispatch {
     ($self:ident, $c:ident => $e:expr) => {
         match $self {
             Contract::Pam($c) => $e,
+            Contract::Fxout($c) => $e,
+            Contract::Swppv($c) => $e,
+            Contract::Swaps($c) => $e,
+            Contract::Capfl($c) => $e,
         }
     };
 }
@@ -55,6 +67,10 @@ impl<const S: u32> Contract<S> {
         let ct = raw.req_text("contractType")?;
         Ok(match ct.as_str() {
             "PAM" => Contract::Pam(PamTerms::parse(raw)?),
+            "FXOUT" => Contract::Fxout(FxoutTerms::parse(raw)?),
+            "SWPPV" => Contract::Swppv(SwppvTerms::parse(raw)?),
+            "SWAPS" => Contract::Swaps(SwapsTerms::parse(raw)?),
+            "CAPFL" => Contract::Capfl(CapflTerms::parse(raw)?),
             other => return Err(Error::UnknownContractType(other.to_string())),
         })
     }

@@ -161,7 +161,9 @@ pub fn compare(case: &Json, computed: &[EventResult<18>]) -> Result<(), String> 
                             }
                         }
                         (None, Json::Null) => {}
-                        (None, Json::Number(n)) if n.as_f64() == Some(0.0) => {}
+                        // A state the contract type does not carry counts as zero (the reference
+                        // implementation reports untouched states as 0).
+                        (None, v) if num(v).is_some_and(|x| x.is_zero()) => {}
                         (None, _) => diffs.push(format!("{name} missing (expected {v})")),
                         _ => {}
                     }
