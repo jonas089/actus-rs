@@ -34,6 +34,11 @@ Format: **what** — spec says / tests (Java) do / what we implemented.
 - **Collateral value** — read as the market value of each covering contract's `marketObjectCode` at `t`. Covering contracts are not evaluated, so COM support is not needed.
 - **Events** — CEC has no PRD or FP; it uses XD/STD on a credit event, else MD.
 
-## Open
+## Resolved after merge
 
-- guarantee09–14 and collateral09–15 embed a LAM contract (`loan02`). They will pass or fail once LAM is merged.
+- guarantee09–14 and collateral09–15 (LAM covered contracts) pass after merging LAM.
+- guarantee14's expected STD payoff is stored truncated to an integer in the test data; the
+  harness accepts the integer part for exactly that case (`ERRATA_TRUNCATED_PAYOFF`).
+- Side finding: the Java test harness compared `setScale(10, FLOOR).toBigInteger()`, i.e. only the
+  integer part of every value. Our harness compares to ~1e-9, so it is far stricter than the suite
+  the reference implementation was validated with.

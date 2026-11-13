@@ -77,3 +77,14 @@ and `../actus-core/` (2020 Java reference, ACTUS Core License — read for cross
 - Each contract type has its own state struct holding only the variables it uses.
 - A `StateView` trait exposes any spec state variable by name (`get(StateVariable)`),
   used by parent contracts, input recording, and the conformance test output.
+
+## Status (2026-11-13)
+- All 18 spec-defined contract types implemented; 276/276 official ACTUS test cases pass
+  (`cargo run --example conformance`, needs `../ref/actus-tests`).
+- Deviations from the decisions above, to revisit:
+  - D5: schedules are generated eagerly up to a horizon (`to`), not as lazy iterators.
+  - D10: the lending types (PAM, LAM, LAX, NAM, ANN, UMP) share one `LoanState`; CLM extends it.
+  - SWAPS evaluates its legs and merges results; its `step` looks results up rather than being an
+    independent transition function.
+- All places where behaviour differs from the spec, or where we chose between spec and tests,
+  are in `docs/notes/*.md`.
