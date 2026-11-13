@@ -230,3 +230,5 @@ pub fn parse_contract_structure(raw: &RawTerms) -> Result<Vec<ContractReference>
     }
     Ok(out)
 }
+
+pub mod any;
