@@ -445,10 +445,10 @@ impl<const S: u32> ContractModel<S> for PamTerms<S> {
                 s.accrued_interest += accrued;
                 calc.accrue_fee(&mut s, t);
                 // Accrued interest is already signed by the role; only the price needs R.
-                fx * -(r * self.trade.price_at_purchase_date + s0.accrued_interest + accrued)
+                fx * r * -(self.trade.price_at_purchase_date + s0.accrued_interest + accrued)
             }
             EventType::TD => {
-                let p = fx * (r * self.trade.price_at_termination_date + s0.accrued_interest + accrued);
+                let p = fx * r * (self.trade.price_at_termination_date + s0.accrued_interest + accrued);
                 s.notional_principal = Fixed::ZERO;
                 s.accrued_interest = Fixed::ZERO;
                 s.fee_accrued = Fixed::ZERO;

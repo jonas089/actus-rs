@@ -133,24 +133,9 @@ fn close(a: f64, b: f64) -> bool {
 /// expect zero accrued interest at the status date. The data dictionary says that, when the
 /// term is absent, accrued interest is estimated over the current interest period; these tests
 /// predate that rule, so we run them with `"accruedInterest": "0"` injected into their terms.
-/// (lam21 additionally appears in [`ERRATA_LIABILITY_ACCRUED_SIGN`].)
 const ERRATA_ZERO_ACCRUED_INTEREST: &[&str] = &[
     "lam18", "lam21", "clm03", "clm05", "clm06", "clm07", "clm08", "clm09", "clm10", "clm11",
     "clm14",
-];
-
-/// Official `RPL` purchase/termination payoffs computed with the specification's
-/// `R·(price + Ipac + accrual)`, which applies the role sign to the (already role-signed)
-/// accrued interest a second time: the liability's transferor then *receives* the accrued
-/// interest it owes. We compute `R·price + Ipac + accrual`, so our payoff is the expected one
-/// mirrored around the price leg `R·price` (listed here, with sign as in the payoff):
-/// - lam04 #15 TD: price leg −2100 (PTD 2100); data −2097.837, ours −2102.163
-/// - nam04 #22 TD: price leg −1800 (PTD 1800); data −1795.576, ours −1804.424
-/// - lam21 #0 PRD: price leg +5200 (PPRD 5200); data 5194.521, ours 5205.479
-const ERRATA_LIABILITY_ACCRUED_SIGN: &[(&str, usize, f64)] = &[
-    ("lam04", 15, -2100.0),
-    ("nam04", 22, -1800.0),
-    ("lam21", 0, 5200.0),
 ];
 
 /// Compare computed results with the expected ones; `Err` describes the mismatches.
@@ -183,14 +168,7 @@ pub fn compare(case: &Json, computed: &[EventResult<18>]) -> Result<(), String> 
                     let id = case.get("identifier").and_then(|v| v.as_str()).unwrap_or("");
                     let truncated_in_data = ERRATA_TRUNCATED_PAYOFF.contains(&(id, i))
                         && got.payoff.to_f64().trunc() == want;
-                    let double_signed_in_data =
-                        ERRATA_LIABILITY_ACCRUED_SIGN.iter().any(|&(c, j, leg)| {
-                            c == id && j == i && close(got.payoff.to_f64(), 2.0 * leg - want)
-                        });
-                    if !close(got.payoff.to_f64(), want)
-                        && !truncated_in_data
-                        && !double_signed_in_data
-                    {
+                    if !close(got.payoff.to_f64(), want) && !truncated_in_data {
                         diffs.push(format!("payoff {} != {}", got.payoff, v));
                     }
                 }

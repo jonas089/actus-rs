@@ -42,10 +42,12 @@ fn close(a: f64, b: f64) -> bool {
 }
 
 #[test]
-fn liability_buyer_receives_price_plus_accrued_interest() {
+fn liability_purchase_follows_reference_formula() {
     // 1000 at 12% (30E/360) since 2020-01-01; bought on 2020-03-01 at 990. Two months of
-    // interest (20) have accrued and are owed by the liability, so whoever takes it over is
-    // paid the price plus the accrued interest.
+    // interest (20) have accrued. Economically the party taking over the liability should be
+    // paid price + accrued (1010), but the spec formula R·(−1)·(PPRD + Ipac) — which the
+    // official cases lam04, nam04 and lam21 pin — gives price − accrued (970). We follow the
+    // official tests; see docs/notes/core.md ("Spec issues").
     let rs = contract(json!({
         "contractType": "PAM", "contractID": "rpl", "contractRole": "RPL", "currency": "USD",
         "statusDate": "2020-02-01T00:00:00", "initialExchangeDate": "2020-01-01T00:00:00",
@@ -57,7 +59,7 @@ fn liability_buyer_receives_price_plus_accrued_interest() {
     .unwrap();
     let prd = of_type(&rs, EventType::PRD)[0];
     assert!(
-        close(prd.payoff.to_f64(), 1010.0),
+        close(prd.payoff.to_f64(), 970.0),
         "PRD payoff {}",
         prd.payoff
     );

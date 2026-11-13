@@ -42,7 +42,7 @@ Format: what / spec says / official tests (Java reference) do / what we implemen
   `tests/loan_behaviour.rs`.
 - Spec PR fee accrual for `FEB = A` uses an undefined `t^-`/`t^+`; we use the generic fee accrual.
 - Initial accrued interest follows the spec (estimate if not given; term signed by role).
-- Termination (`TD`) uses the liability-correct `R·PTD + Ipac + accrual` (see core.md); ump09.
+- Termination (`TD`) uses the spec formula `R·(PTD + Ipac + accrual)` (see core.md); ump09.
 
 ## CSH — Cash
 

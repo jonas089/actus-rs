@@ -92,3 +92,10 @@ and `../actus-core/` (2020 Java reference, ACTUS Core License — read for cross
     doesn't use are `None` and not reported.
 - All places where behaviour differs from the spec, or where we chose between spec and tests,
   are in `docs/notes/*.md`.
+- Combined contracts (SWAPS, CAPFL) are true state machines: their state holds the children's
+  states (`any::AnyState`), and each parent event lists the child events it applies
+  (`Event::components`).
+- Policy for spec vs. official tests: where an official test pins a formula, follow the test and
+  document the spec conflict; where a test only omits an input the current dictionary defines a
+  rule for (accrued interest at the status date), follow the dictionary and make the test's
+  implicit input explicit (`ERRATA_ZERO_ACCRUED_INTEREST` in `src/conformance.rs`).
