@@ -149,6 +149,10 @@ pub struct Event<const S: u32> {
     /// Contract performance carried by an unscheduled credit event.
     #[serde(default)]
     pub performance: Option<ContractPerformance>,
+    /// For events of combined contracts (SWAPS, CAPFL): the child events this event applies,
+    /// as `(child index, child event)`. Empty for all other events.
+    #[serde(default)]
+    pub components: Vec<(u8, Event<S>)>,
 }
 
 impl<const S: u32> Event<S> {
@@ -161,6 +165,7 @@ impl<const S: u32> Event<S> {
             contract_id: contract_id.to_string(),
             value: Fixed::ZERO,
             performance: None,
+            components: Vec::new(),
         }
     }
 
