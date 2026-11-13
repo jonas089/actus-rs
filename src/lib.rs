@@ -134,6 +134,14 @@ impl<const S: u32> Contract<S> {
         dispatch!(self, c => c.project(to, obs))
     }
 
+    /// Lazily evaluate the contract event by event (unbounded for contracts without an end).
+    pub fn stream<'a>(
+        &'a self,
+        obs: &'a dyn RiskFactorObserver<S>,
+    ) -> Box<dyn Iterator<Item = Result<EventResult<S>>> + 'a> {
+        dispatch!(self, c => Box::new(c.stream(obs)))
+    }
+
     pub fn common(&self) -> &terms::CommonTerms {
         dispatch!(self, c => c.common())
     }

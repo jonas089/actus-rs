@@ -81,10 +81,14 @@ and `../actus-core/` (2020 Java reference, ACTUS Core License — read for cross
 ## Status (2026-11-13)
 - All 18 spec-defined contract types implemented; 276/276 official ACTUS test cases pass
   (`cargo run --example conformance`, needs `../ref/actus-tests`).
-- Deviations from the decisions above, to revisit:
-  - D5: schedules are generated eagerly up to a horizon (`to`), not as lazy iterators.
-  - D10: the lending types (PAM, LAM, LAX, NAM, ANN, UMP) share one `LoanState`; CLM extends it.
-  - SWAPS evaluates its legs and merges results; its `step` looks results up rather than being an
-    independent transition function.
+- Revisions to the decisions above:
+  - D5: implemented. `ContractModel::stream` / `Contract::stream` evaluate lazily, event by event;
+    contracts without a natural end generate their schedule in growing windows, so the stream is
+    unbounded. `project(to)` remains the batch convenience; a test checks both agree on all cases.
+  - D10 revised: state is typed per contract *family*, not per type, where the spec's state tables
+    are identical: `LoanState` (PAM, LAM, LAX, NAM, ANN, UMP; CLM extends it), `OwnershipState`
+    (STK, COM), `ExerciseState` (OPTNS, FUTUR), `CreditEnhancementState` (CEG, CEC); CSH, FXOUT,
+    SWPPV have their own. Per-type aliases (`PamState`, ...) exist in `contracts`. Variables a type
+    doesn't use are `None` and not reported.
 - All places where behaviour differs from the spec, or where we chose between spec and tests,
   are in `docs/notes/*.md`.
