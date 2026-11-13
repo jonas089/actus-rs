@@ -1,9 +1,13 @@
 //! Contract type implementations.
 
+pub mod capfl;
 pub mod clm;
 pub mod com;
 pub mod csh;
+pub mod fxout;
 pub mod loan;
 pub mod pam;
 pub mod stk;
+pub mod swaps;
+pub mod swppv;
 pub mod ump;

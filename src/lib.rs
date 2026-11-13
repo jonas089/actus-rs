@@ -27,11 +27,15 @@ pub use fixed::{Decimal, Fixed};
 pub use observer::{MarketData, ObservedEvent, RiskFactorObserver};
 pub use time::DateTime;
 
+use contracts::capfl::CapflTerms;
 use contracts::clm::ClmTerms;
 use contracts::com::ComTerms;
 use contracts::csh::CshTerms;
+use contracts::fxout::FxoutTerms;
 use contracts::pam::PamTerms;
 use contracts::stk::StkTerms;
+use contracts::swaps::SwapsTerms;
+use contracts::swppv::SwppvTerms;
 use contracts::ump::UmpTerms;
 use terms::RawTerms;
 
@@ -44,6 +48,10 @@ pub enum Contract<const S: u32 = { fixed::DEFAULT_SCALE }> {
     Csh(CshTerms<S>),
     Stk(StkTerms<S>),
     Com(ComTerms<S>),
+    Fxout(FxoutTerms<S>),
+    Swppv(SwppvTerms<S>),
+    Swaps(SwapsTerms<S>),
+    Capfl(CapflTerms<S>),
 }
 
 macro_rules! dispatch {
@@ -55,6 +63,10 @@ macro_rules! dispatch {
             Contract::Csh($c) => $e,
             Contract::Stk($c) => $e,
             Contract::Com($c) => $e,
+            Contract::Fxout($c) => $e,
+            Contract::Swppv($c) => $e,
+            Contract::Swaps($c) => $e,
+            Contract::Capfl($c) => $e,
         }
     };
 }
@@ -75,6 +87,10 @@ impl<const S: u32> Contract<S> {
             "CSH" => Contract::Csh(CshTerms::parse(raw)?),
             "STK" => Contract::Stk(StkTerms::parse(raw)?),
             "COM" => Contract::Com(ComTerms::parse(raw)?),
+            "FXOUT" => Contract::Fxout(FxoutTerms::parse(raw)?),
+            "SWPPV" => Contract::Swppv(SwppvTerms::parse(raw)?),
+            "SWAPS" => Contract::Swaps(SwapsTerms::parse(raw)?),
+            "CAPFL" => Contract::Capfl(CapflTerms::parse(raw)?),
             other => return Err(Error::UnknownContractType(other.to_string())),
         })
     }
