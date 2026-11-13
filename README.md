@@ -56,5 +56,5 @@ this engine does, is documented in `docs/notes/`. Design decisions are in `docs/
 
 ## License note
 
-Written from the ACTUS specification (CC BY-SA). The Java reference implementation (ACTUS Core
+Written from the ACTUS technical specification. The Java reference implementation (ACTUS Core
 License) was consulted for behaviour only; no code was translated from it.
