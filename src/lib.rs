@@ -27,6 +27,8 @@ pub use fixed::{Decimal, Fixed};
 pub use observer::{MarketData, ObservedEvent, RiskFactorObserver};
 pub use time::DateTime;
 
+use contracts::lam::{AmortizerKind, AmortizerTerms};
+use contracts::lax::LaxTerms;
 use contracts::pam::PamTerms;
 use terms::RawTerms;
 
@@ -34,12 +36,20 @@ use terms::RawTerms;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Contract<const S: u32 = { fixed::DEFAULT_SCALE }> {
     Pam(PamTerms<S>),
+    Lam(AmortizerTerms<S>),
+    Lax(LaxTerms<S>),
+    Nam(AmortizerTerms<S>),
+    Ann(AmortizerTerms<S>),
 }
 
 macro_rules! dispatch {
     ($self:ident, $c:ident => $e:expr) => {
         match $self {
             Contract::Pam($c) => $e,
+            Contract::Lam($c) => $e,
+            Contract::Lax($c) => $e,
+            Contract::Nam($c) => $e,
+            Contract::Ann($c) => $e,
         }
     };
 }
@@ -55,6 +65,10 @@ impl<const S: u32> Contract<S> {
         let ct = raw.req_text("contractType")?;
         Ok(match ct.as_str() {
             "PAM" => Contract::Pam(PamTerms::parse(raw)?),
+            "LAM" => Contract::Lam(AmortizerTerms::parse(raw, AmortizerKind::Lam)?),
+            "LAX" => Contract::Lax(LaxTerms::parse(raw)?),
+            "NAM" => Contract::Nam(AmortizerTerms::parse(raw, AmortizerKind::Nam)?),
+            "ANN" => Contract::Ann(AmortizerTerms::parse(raw, AmortizerKind::Ann)?),
             other => return Err(Error::UnknownContractType(other.to_string())),
         })
     }

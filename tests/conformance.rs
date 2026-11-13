@@ -16,4 +16,4 @@ macro_rules! suites {
     ($($name:ident),*) => { $( #[test] fn $name() { check(stringify!($name)); } )* };
 }
 
-suites!(pam);
+suites!(pam, lam, lax, nam, ann);
