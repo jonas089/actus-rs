@@ -36,6 +36,33 @@ for result in loan.stream(&MarketData::new()) {
 
 See `examples/quickstart.rs` for a floating-rate loan with market data.
 
+## Examples: one per contract type
+
+Each example describes the contract, sets up a realistic scenario with every term commented,
+supplies the market data and observed events it needs, and prints the resulting events with an
+explanation. Run one with `cargo run --example <name>`.
+
+| Type | Example | Scenario |
+|---|---|---|
+| PAM | `pam_bullet_loan` | 3-year floating-rate bullet loan, SOFR + 2% |
+| LAM | `lam_linear_amortizer` | Equipment loan, fixed principal per quarter |
+| NAM | `nam_negative_amortizer` | Fixed monthly payment, rising rates, balloon at maturity |
+| ANN | `ann_annuity_mortgage` | Mortgage whose instalment is recalculated after each reset |
+| LAX | `lax_construction_loan` | Two draw-downs, then amortization, with a rate step-up |
+| CLM | `clm_call_money` | Call money called with 31 days' notice |
+| UMP | `ump_savings_account` | Savings account with deposits and withdrawals |
+| CSH | `csh_cash_position` | Cash position as the base of a liquidity ladder |
+| STK | `stk_equity_position` | Shares with quarterly dividends, then sold |
+| COM | `com_commodity_position` | Gold held for a year, marked to market |
+| FXOUT | `fxout_fx_forward` | EUR forward, delivered vs. cash-settled |
+| SWPPV | `swppv_plain_vanilla_swap` | Pay-fixed interest rate swap |
+| SWAPS | `swaps_cross_currency_swap` | USD/EUR cross-currency swap built from two PAM legs |
+| CAPFL | `capfl_interest_rate_cap` | Rate cap on a EURIBOR loan |
+| OPTNS | `optns_equity_option` | European call and put on a share |
+| FUTUR | `futur_commodity_future` | Jet fuel future, long and short side |
+| CEG | `ceg_loan_guarantee` | 80% guarantee on an SME loan that defaults |
+| CEC | `cec_collateral` | Gold-secured loan, default before and after a price crash |
+
 ## Conformance tests
 
 The official test files are CC BY-SA and not included. Check out

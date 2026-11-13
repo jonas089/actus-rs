@@ -62,7 +62,10 @@ Format: what / spec says / official tests (Java reference) do / what we implemen
   (stk09: 2017-01-01 Sunday paid 2017-01-02, observed at 2017-01-01).
 - Dividend anchor defaults to the purchase date when only a cycle is given (Java default).
 - `nextDividendPaymentAmount` (spec DV(fix)) fixes the first dividend (`tests/loan_behaviour.rs`).
-- Dividends recur without end; we generate up to the termination date or the horizon.
+- Dividends recur without end; we generate up to the termination date or the horizon. The
+  termination date itself is not a dividend date unless it falls on the dividend cycle (earlier
+  versions appended a stub DV on the sale date, which then required a dividend observation there;
+  no official case covers it).
 
 ## COM — Commodity
 

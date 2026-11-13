@@ -48,8 +48,9 @@ impl<const S: u32> Covered<S> {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CreditEnhancementTerms<const S: u32> {
     pub covered: Vec<Covered<S>>,
-    /// Market object codes of the covering contracts (collateral), CEC only.
-    pub covering: Vec<String>,
+    /// Covering contracts (collateral), CEC only: market object code and quantity. The value of
+    /// one is `quantity × price(marketObjectCode)`; a bare market-object reference has quantity 1.
+    pub covering: Vec<(String, Fixed<S>)>,
     pub guaranteed_exposure: GuaranteedExposure,
     pub coverage: Fixed<S>,
     pub credit_events_covered: Vec<ContractPerformance>,
@@ -75,12 +76,13 @@ impl<const S: u32> CreditEnhancementTerms<S> {
                 }
                 (ReferenceRole::COVE, ReferenceObject::ContractId(id)) => covered.push(Covered::Id(id)),
                 (ReferenceRole::COVE, ReferenceObject::MarketObject(m)) => covered.push(Covered::Id(m)),
-                (ReferenceRole::COVI, ReferenceObject::Contract(terms)) => covering.push(
+                (ReferenceRole::COVI, ReferenceObject::Contract(terms)) => covering.push((
                     terms
                         .text("marketObjectCode")
                         .ok_or_else(|| Error::invalid("contractStructure", "covering contract without marketObjectCode"))?,
-                ),
-                (ReferenceRole::COVI, ReferenceObject::MarketObject(m)) => covering.push(m),
+                    terms.fixed_or("quantity", Fixed::ONE)?,
+                )),
+                (ReferenceRole::COVI, ReferenceObject::MarketObject(m)) => covering.push((m, Fixed::ONE)),
                 (role, _) => return Err(Error::invalid("contractStructure", format!("unsupported reference {role:?}"))),
             }
         }
@@ -178,8 +180,8 @@ impl<const S: u32> CreditEnhancementTerms<S> {
     /// Market value of the covering contracts (collateral) at `t`.
     pub fn covering_value(&self, t: DateTime, obs: &dyn RiskFactorObserver<S>) -> Result<Fixed<S>> {
         let mut total = Fixed::ZERO;
-        for moc in &self.covering {
-            total += obs.risk_factor(moc, t)?;
+        for (moc, quantity) in &self.covering {
+            total += *quantity * obs.risk_factor(moc, t)?;
         }
         Ok(total)
     }
@@ -370,6 +372,11 @@ impl<const S: u32> ContractModel<S> for CegTerms<S> {
             evs.push(Event::new(EventType::FP, t, self.common.business_day.shift_event_time(t), cur, cid));
         }
         evs.extend(self.enhancement.schedule(&self.common, obs));
+        // Once exercised the guarantee is used up: no fees are charged after the exercise date
+        // (as in the official tests, e.g. guarantee14).
+        if let Some(xd) = evs.iter().filter(|e| e.event_type == EventType::XD).map(|e| e.time).min() {
+            evs.retain(|e| e.event_type != EventType::FP || e.time <= xd);
+        }
         clip_events(&mut evs, self.common.status_date, to);
         sort_events(&mut evs);
         Ok(evs)

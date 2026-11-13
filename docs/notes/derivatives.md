@@ -23,6 +23,8 @@ Format: **what** — spec says / tests (Java) do / what we implemented.
 - **PRD state** — Java sets `feeAccrued = feeRate`, which is a bug. We leave `Feac` unchanged.
 - **Fee basis A accrual** — Java divides by the period ending at `sd + cycle` instead of the actual next fee date. We use the actual surrounding FP dates and fall back to `prev + cycle`.
 - **FP payoff (FEB=A)** — `fx * R * FER`. The guarantor receives the fee when the guarantee is bought (`R = +1`).
+- **No fees after exercise** — spec: the FP schedule runs to maturity. Tests (guarantee14): no FP after
+  the XD. We drop FP events after the first exercise date.
 - **Initial `Feac`** — Java has a TODO here. We use the `feeAccrued` term, else accrual over the current fee period.
 - **Day count default** — A365 when `dayCountConvention` is absent; Java does the same.
 - **Test-value truncation** — Java's `ResultSet.roundTo` floors to an integer before comparing (`setScale(10, FLOOR).toBigInteger()`). Some expected values are therefore truncated: guarantee14 STD expects 3508695, while the true value is 3508695.652. This case depends on LAM and is not exercised yet. If it fails only on the fraction once LAM exists, the harness needs an integer-floor fallback.
@@ -30,6 +32,8 @@ Format: **what** — spec says / tests (Java) do / what we implemented.
 ## CEC
 
 - **Notional** — spec: `Nt = min(MV collateral, exposure)`. Java: `Nt` is `CECV * R * exposure`, and the `min` applies only to `Xa` at XD. We follow Java.
+- **Collateral quantity** — Java values a covering contract at its market price only (the tests use
+  quantity 1). We use `quantity × price`, as for COM itself.
 - **Exercise amount sign** — Java: `min(MV, Nt)`. For a seller role `Nt < 0`, so the `min` always returns `Nt`. We use `sign(Nt) * min(MV, |Nt|)`, which matches the tests for buyers and stays sensible for sellers.
 - **Collateral value** — read as the market value of each covering contract's `marketObjectCode` at `t`. Covering contracts are not evaluated, so COM support is not needed.
 - **Events** — CEC has no PRD or FP; it uses XD/STD on a credit event, else MD.

@@ -84,9 +84,10 @@ impl<const S: u32> ContractModel<S> for StkTerms<S> {
         }
         if let (Some(a), Some(c)) = (self.dividend_anchor, self.dividend_cycle) {
             // Dividends recur without end: generate up to the termination date, else one cycle
-            // past the analysis horizon (later events are clipped below).
+            // past the analysis horizon (later events are clipped below). A sale is not a dividend
+            // date: only regular cycle dates up to and including the termination date are kept.
             let (end, include_end) = match (self.trade.termination_date, to) {
-                (Some(td), _) => (td, true),
+                (Some(td), _) => (td + chrono::Duration::seconds(1), false),
                 (None, Some(to)) => (c.period.add_to(to), false),
                 (None, None) => {
                     return Err(Error::Unsupported("STK dividends without termination need a horizon".into()));
