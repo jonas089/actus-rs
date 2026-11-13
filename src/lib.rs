@@ -27,6 +27,10 @@ pub use fixed::{Decimal, Fixed};
 pub use observer::{MarketData, ObservedEvent, RiskFactorObserver};
 pub use time::DateTime;
 
+use contracts::cec::CecTerms;
+use contracts::ceg::CegTerms;
+use contracts::futur::FuturTerms;
+use contracts::optns::OptnsTerms;
 use contracts::pam::PamTerms;
 use terms::RawTerms;
 
@@ -34,12 +38,20 @@ use terms::RawTerms;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Contract<const S: u32 = { fixed::DEFAULT_SCALE }> {
     Pam(PamTerms<S>),
+    Optns(OptnsTerms<S>),
+    Futur(FuturTerms<S>),
+    Ceg(CegTerms<S>),
+    Cec(CecTerms<S>),
 }
 
 macro_rules! dispatch {
     ($self:ident, $c:ident => $e:expr) => {
         match $self {
             Contract::Pam($c) => $e,
+            Contract::Optns($c) => $e,
+            Contract::Futur($c) => $e,
+            Contract::Ceg($c) => $e,
+            Contract::Cec($c) => $e,
         }
     };
 }
@@ -55,6 +67,10 @@ impl<const S: u32> Contract<S> {
         let ct = raw.req_text("contractType")?;
         Ok(match ct.as_str() {
             "PAM" => Contract::Pam(PamTerms::parse(raw)?),
+            "OPTNS" => Contract::Optns(OptnsTerms::parse(raw)?),
+            "FUTUR" => Contract::Futur(FuturTerms::parse(raw)?),
+            "CEG" => Contract::Ceg(CegTerms::parse(raw)?),
+            "CEC" => Contract::Cec(CecTerms::parse(raw)?),
             other => return Err(Error::UnknownContractType(other.to_string())),
         })
     }
