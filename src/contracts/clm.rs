@@ -237,7 +237,7 @@ impl<const S: u32> ContractModel<S> for ClmTerms<S> {
         // A call (XD) is ordered before any other event at the same instant.
         evs.sort_by_key(|e| {
             let off = if e.event_type == EventType::XD { 0 } else { e.event_type.sequence() };
-            e.time.and_utc().timestamp() + off
+            crate::events::ordering_key(e.time, off)
         });
         Ok(evs)
     }

@@ -72,6 +72,14 @@ impl Period {
         Period { years, months: 0, days: 0, seconds: 0 }
     }
 
+    pub const fn days(days: i64) -> Period {
+        Period { years: 0, months: 0, days, seconds: 0 }
+    }
+
+    pub const fn seconds(seconds: i64) -> Period {
+        Period { years: 0, months: 0, days: 0, seconds }
+    }
+
     pub fn is_zero(&self) -> bool {
         *self == Self::ZERO
     }
@@ -160,6 +168,51 @@ impl fmt::Display for Period {
             write!(f, "T{}S", self.seconds)?;
         }
         Ok(())
+    }
+}
+
+/// The time axis of a ledger that counts in ticks (block heights, slots): tick `k` is the engine
+/// time `genesis + k × seconds_per_tick`.
+///
+/// Contract terms and observations stay in engine time; the clock converts at the boundary, and
+/// gives cycles as a number of ticks. With `seconds_per_tick = 1` the axis is purely logical,
+/// which is all the margined types (FUTUR, PERP) need: they never measure elapsed time. Types
+/// that accrue interest read year fractions off the engine time, so for them the mapping has to
+/// follow the ledger's real slot length.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TickClock {
+    genesis: DateTime,
+    seconds_per_tick: i64,
+}
+
+impl TickClock {
+    pub fn new(genesis: DateTime, seconds_per_tick: i64) -> Result<TickClock> {
+        if seconds_per_tick <= 0 {
+            return Err(Error::invalid("secondsPerTick", seconds_per_tick));
+        }
+        Ok(TickClock { genesis, seconds_per_tick })
+    }
+
+    /// Engine time of `tick`; `None` when it is beyond the representable range.
+    pub fn time(&self, tick: u64) -> Option<DateTime> {
+        let seconds = i64::try_from(tick).ok()?.checked_mul(self.seconds_per_tick)?;
+        self.genesis.checked_add_signed(Duration::try_seconds(seconds)?)
+    }
+
+    /// The tick at `time`; `None` before genesis or between two ticks.
+    pub fn tick(&self, time: DateTime) -> Option<u64> {
+        let seconds = (time - self.genesis).num_seconds();
+        let on_a_tick = seconds >= 0 && seconds % self.seconds_per_tick == 0;
+        on_a_tick.then(|| (seconds / self.seconds_per_tick) as u64)
+    }
+
+    /// A cycle of `ticks` ticks, e.g. for `cycleOfFunding` (its `Display` is the term's value).
+    pub fn cycle(&self, ticks: u64) -> Result<Cycle> {
+        let seconds = i64::try_from(ticks).ok().and_then(|n| n.checked_mul(self.seconds_per_tick));
+        match seconds {
+            Some(s) if s > 0 => Ok(Cycle { period: Period::seconds(s), stub: Stub::Short }),
+            _ => Err(Error::invalid("cycle", format!("{ticks} ticks"))),
+        }
     }
 }
 
@@ -435,6 +488,23 @@ mod tests {
         let c = Cycle::parse("PT8H").unwrap();
         let s = schedule(Some(d("2026-01-01")), d("2026-01-02"), Some(c), EndOfMonthConvention::SD, true);
         assert_eq!(s, vec![d("2026-01-01"), d("2026-01-01T08:00:00"), d("2026-01-01T16:00:00"), d("2026-01-02")]);
+    }
+
+    #[test]
+    fn tick_clock() {
+        let clock = TickClock::new(d("2026-01-01"), 12).unwrap();
+        assert_eq!(clock.time(0), Some(d("2026-01-01")));
+        assert_eq!(clock.time(300), Some(d("2026-01-01T01:00:00")));
+        assert_eq!(clock.tick(d("2026-01-01T01:00:00")), Some(300));
+        assert_eq!(clock.tick(d("2026-01-01T00:00:05")), None);
+        assert_eq!(clock.tick(d("2025-12-31T23:59:48")), None);
+        assert_eq!(clock.time(u64::MAX), None);
+        // A cycle in ticks round-trips through its term value.
+        let c = clock.cycle(5).unwrap();
+        assert_eq!(c.period, Period::seconds(60));
+        assert_eq!(Cycle::parse(&c.to_string()).unwrap(), c);
+        assert!(clock.cycle(0).is_err());
+        assert!(TickClock::new(d("2026-01-01"), 0).is_err());
     }
 
     #[test]

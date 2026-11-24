@@ -104,7 +104,7 @@ pub struct Projection<'a, const S: u32, M: ContractModel<S>> {
     last_key: Option<i64>,
     /// `None` once the full schedule is known (bounded contract or schedule exhausted).
     horizon: Option<DateTime>,
-    window_years: i64,
+    window_days: i64,
     /// Error from generating the first schedule window, reported on the first `next`.
     pending_error: Option<Error>,
     done: bool,
@@ -113,6 +113,10 @@ pub struct Projection<'a, const S: u32, M: ContractModel<S>> {
 /// Unbounded schedules are generated in windows of growing length; after this many years past
 /// the status date without any new event, the stream ends.
 const MAX_EMPTY_HORIZON_YEARS: i64 = 200;
+
+/// The first window is a day, so a contract with a cycle of seconds yields its first events
+/// without scheduling a year of them; each further window doubles, up to this length.
+const MAX_WINDOW_DAYS: i64 = 16 * 366;
 
 impl<'a, const S: u32, M: ContractModel<S>> Projection<'a, S, M> {
     fn new(model: &'a M, obs: &'a dyn RiskFactorObserver<S>) -> Self {
@@ -124,7 +128,7 @@ impl<'a, const S: u32, M: ContractModel<S>> Projection<'a, S, M> {
             window: Vec::new(),
             last_key: None,
             horizon: None,
-            window_years: 1,
+            window_days: 1,
             pending_error: None,
             done: false,
         };
@@ -135,7 +139,7 @@ impl<'a, const S: u32, M: ContractModel<S>> Projection<'a, S, M> {
             }
             Err(_) => {
                 // No natural end: generate the first window.
-                p.horizon = Some(crate::time::Period::years(1).add_to(model.common().status_date));
+                p.horizon = Some(crate::time::Period::days(1).add_to(model.common().status_date));
                 p.pending_error = p.refill_window();
             }
         }
@@ -152,8 +156,8 @@ impl<'a, const S: u32, M: ContractModel<S>> Projection<'a, S, M> {
                     let fresh: Vec<Event<S>> =
                         evs.iter().filter(|e| self.last_key.is_none_or(|k| e.key() > k)).cloned().collect();
                     self.window = evs;
-                    let next = crate::time::Period::years(self.window_years).add_to(h);
-                    self.window_years = (self.window_years * 2).min(16);
+                    let next = crate::time::Period::days(self.window_days).add_to(h);
+                    self.window_days = (self.window_days * 2).min(MAX_WINDOW_DAYS);
                     self.horizon = if h >= limit && fresh.is_empty() { None } else { Some(next) };
                     if !fresh.is_empty() {
                         self.buffer.extend(fresh);

@@ -56,9 +56,8 @@ last settled at there, with the status date at that settlement.
   known; `stream` is unbounded.
 - **Cycle anchors default to the status date**, so the first funding and the first settlement
   fall one cycle after it.
-- **Termination cuts by time, not by sort key.** Other types drop events whose sort key is after
-  the TD's; with intraday cycles that would let an event up to 140 seconds after the close
-  through.
+- **Termination cuts by time.** Nothing happens to a position after the second it is closed in;
+  events in that same second are all applied, in sequence order.
 
 ## Not modelled
 
@@ -70,14 +69,28 @@ last settled at there, with the status date at that settlement.
 - **Inverse (coin-margined) perpetuals**, whose payoff is in `1 / price`.
 - **Trading fees.**
 
-## Known limits of the core that intraday events run into
+## Ticks
 
-- **Event order within about 16 minutes.** Events are sorted by time plus a per-type offset of up
-  to 950 seconds (`EventType::sequence`, taken from the reference implementation the official
-  tests come from). Two events of different types less than that apart can sort in the wrong
-  order, and an event less than about 16 minutes after the status date can be dropped by
-  `clip_events`. Hourly and 8-hourly cycles are unaffected. Block-time resolution needs the sort
-  key changed to (time, sequence); that touches every type and is not done here.
+A ledger counts time in ticks (block heights, slots), not dates. Three things in the core make
+contracts run at that resolution; all of them apply to every type, not only PERP.
+
+- **Events order by time, then by sequence.** The reference implementation added the per-type
+  sequence to the event time as seconds (up to 950), so two events of different types less than
+  16 minutes apart could swap, and an event that soon after the status date was dropped. The
+  sequence now only orders events of the same second (`events::sort_key`). No official test
+  depended on the old behaviour: all 276 pass unchanged.
+- **`time::TickClock`** maps tick `k` to `genesis + k × seconds_per_tick` and gives cycles as a
+  number of ticks. Terms and observations stay in engine time; the clock converts at the
+  boundary. PERP and FUTUR never measure elapsed time, so for them the axis can be purely
+  logical (one second per tick). Types that accrue interest take year fractions from the engine
+  time, so their clock must follow the ledger's real slot length, and a ledger with irregular
+  slots needs a timestamp per tick, which this clock does not model.
+- **`stream` starts with a one-day window** and doubles it, instead of starting with a year, so
+  a contract with a cycle of seconds yields its first events at once.
+
+Still open:
+
+- **Resolution is one second.** Two ticks cannot share a second.
 - **Streaming cost.** `stream` regenerates the schedule from the status date for each window, so
   a long-running position with a short cycle should be re-based (new status date, `futuresPrice`
   = last settlement price) from time to time.

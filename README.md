@@ -16,6 +16,8 @@ A deterministic state-transition engine for financial contracts, implementing th
   (rates, prices, FX, unscheduled events) come through one observer interface, so every run can be
   recorded and replayed exactly (`observer::Recorder`), and `required_inputs` tells you which
   observations an event needs before you run it.
+- **Tick resolution**: events order exactly by time down to the second, and `time::TickClock`
+  maps a ledger's ticks (block heights) to engine time and cycles to a number of ticks.
 - **Lazy evaluation**: `stream()` yields events one by one and handles contracts with no end date.
 
 ## Usage
