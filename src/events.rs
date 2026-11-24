@@ -189,15 +189,15 @@ impl<const S: u32> Event<S> {
 pub const SEQUENCE_SPAN: i64 = 1024;
 
 /// Ordering key of an event of `event_type` at `time`: events sort by time, and only events at
-/// the same second by sequence.
+/// the same millisecond by sequence.
 pub fn sort_key(time: DateTime, event_type: EventType) -> i64 {
     ordering_key(time, event_type.sequence())
 }
 
-/// Ordering key for `time` with an explicit position among the events of the same second.
+/// Ordering key for `time` with an explicit position among the events of the same millisecond.
 pub fn ordering_key(time: DateTime, sequence: i64) -> i64 {
     debug_assert!((0..SEQUENCE_SPAN).contains(&sequence));
-    time.and_utc().timestamp() * SEQUENCE_SPAN + sequence
+    time.and_utc().timestamp_millis() * SEQUENCE_SPAN + sequence
 }
 
 /// Sort events by time and event sequence (stable for identical keys).

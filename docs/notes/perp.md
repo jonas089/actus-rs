@@ -15,9 +15,9 @@ every number out by hand.
 - **New** — the contract type `PERP`; the terms `cycleOfFunding`, `cycleAnchorDateOfFunding` and
   `marketObjectCodeOfFunding`; the event `FND` (funding payment, sequence 75); the state
   `settlementPrice`.
-- **New in the core** — periods with a time part (`PT8H`, `P1DT12H`, `PT30M`). ACTUS cycles stop
-  at days; funding does not. In the date part `H` is still the ACTUS half year and `M` a month;
-  after the `T` they are hours and minutes.
+- **New in the core** — periods with a time part (`PT8H`, `P1DT12H`, `PT30M`, `PT0.05S`), held in
+  milliseconds. ACTUS cycles stop at days; funding does not. In the date part `H` is still the
+  ACTUS half year and `M` a month; after the `T` they are hours and minutes.
 
 ## Events and payoffs
 
@@ -56,8 +56,8 @@ last settled at there, with the status date at that settlement.
   known; `stream` is unbounded.
 - **Cycle anchors default to the status date**, so the first funding and the first settlement
   fall one cycle after it.
-- **Termination cuts by time.** Nothing happens to a position after the second it is closed in;
-  events in that same second are all applied, in sequence order.
+- **Termination cuts by time.** Nothing happens to a position after the instant it is closed at;
+  events at that same instant are all applied, in sequence order.
 
 ## Not modelled
 
@@ -77,20 +77,23 @@ contracts run at that resolution; all of them apply to every type, not only PERP
 - **Events order by time, then by sequence.** The reference implementation added the per-type
   sequence to the event time as seconds (up to 950), so two events of different types less than
   16 minutes apart could swap, and an event that soon after the status date was dropped. The
-  sequence now only orders events of the same second (`events::sort_key`). No official test
+  sequence now only orders events of the same millisecond (`events::sort_key`). No official test
   depended on the old behaviour: all 276 pass unchanged.
-- **`time::TickClock`** maps tick `k` to `genesis + k × seconds_per_tick` and gives cycles as a
-  number of ticks. Terms and observations stay in engine time; the clock converts at the
-  boundary. PERP and FUTUR never measure elapsed time, so for them the axis can be purely
-  logical (one second per tick). Types that accrue interest take year fractions from the engine
-  time, so their clock must follow the ledger's real slot length, and a ledger with irregular
-  slots needs a timestamp per tick, which this clock does not model.
-- **`stream` starts with a one-day window** and doubles it, instead of starting with a year, so
-  a contract with a cycle of seconds yields its first events at once.
+- **`time::TickClock`** maps tick `k` to `genesis + k × tick length` and gives cycles as a number
+  of ticks. The default tick is 50 ms (`TickClock::new`); `with_tick_millis` takes another
+  length. Terms and observations stay in engine time; the clock converts at the boundary. PERP
+  and FUTUR never measure elapsed time, so for them the axis is purely logical. Types that
+  accrue interest take year fractions from the engine time, so their clock must follow the
+  ledger's real slot length, and a ledger with irregular slots needs a timestamp per tick, which
+  this clock does not model.
+- **`stream` starts with a one-minute window** (1,200 default ticks) and doubles it, instead of
+  starting with a year, so a contract with a cycle of one tick yields its first events at once.
 
 Still open:
 
-- **Resolution is one second.** Two ticks cannot share a second.
-- **Streaming cost.** `stream` regenerates the schedule from the status date for each window, so
-  a long-running position with a short cycle should be re-based (new status date, `futuresPrice`
-  = last settlement price) from time to time.
+- **Resolution is one millisecond**, the unit of periods and of the sort key. Timestamps finer
+  than that are kept but two events inside one millisecond order by sequence only.
+- **Cost of per-tick cycles.** A cycle of one default tick is 1.7 million events a day, each
+  materialised by `schedule`, and `stream` regenerates the schedule from the status date for each
+  window. Per-tick events are for short horizons; a long-running position should use a coarser
+  cycle or be re-based (new status date, `futuresPrice` = last settlement price).

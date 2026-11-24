@@ -120,7 +120,7 @@ impl<const S: u32> PerpTerms<S> {
     fn cyclic(&self, ty: EventType, anchor: Option<DateTime>, cycle: Option<Cycle>, end: DateTime) -> Vec<Event<S>> {
         let (Some(a), Some(c)) = (anchor, cycle) else { return Vec::new() };
         let (cur, cid) = (&self.common.currency, &self.common.contract_id);
-        schedule(Some(a), end + chrono::Duration::seconds(1), Some(c), self.common.end_of_month, false)
+        schedule(Some(a), end + chrono::Duration::milliseconds(1), Some(c), self.common.end_of_month, false)
             .into_iter()
             .map(|t| Event::new(ty, t, self.common.business_day.shift_event_time(t), cur, cid))
             .collect()

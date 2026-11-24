@@ -55,29 +55,25 @@ pub fn add_months(dt: DateTime, months: i64) -> DateTime {
 }
 
 /// A period as in ISO 8601 durations: a calendar part (years/months/days), which ACTUS cycles
-/// use, and a time part held in seconds (`PT8H`), which ACTUS does not use but intraday cycles
-/// such as perpetual funding need.
+/// use, and a time part held in milliseconds (`PT8H`, `PT0.05S`), which ACTUS does not use but
+/// intraday and tick cycles need.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Period {
     pub years: i64,
     pub months: i64,
     pub days: i64,
-    pub seconds: i64,
+    pub millis: i64,
 }
 
 impl Period {
-    pub const ZERO: Period = Period { years: 0, months: 0, days: 0, seconds: 0 };
+    pub const ZERO: Period = Period { years: 0, months: 0, days: 0, millis: 0 };
 
     pub const fn years(years: i64) -> Period {
-        Period { years, months: 0, days: 0, seconds: 0 }
+        Period { years, months: 0, days: 0, millis: 0 }
     }
 
-    pub const fn days(days: i64) -> Period {
-        Period { years: 0, months: 0, days, seconds: 0 }
-    }
-
-    pub const fn seconds(seconds: i64) -> Period {
-        Period { years: 0, months: 0, days: 0, seconds }
+    pub const fn millis(millis: i64) -> Period {
+        Period { years: 0, months: 0, days: 0, millis }
     }
 
     pub fn is_zero(&self) -> bool {
@@ -86,7 +82,8 @@ impl Period {
 
     /// Parse an ISO 8601 period like `P1M`, `P3M`, `P1Y`, `P2W`, `P15D`, `P0D`, `P1Y6M`.
     /// ACTUS extensions `Q` (quarter) and `H` (half year) are accepted. After a `T` the
-    /// designators are hours, minutes and seconds (`PT8H`, `P1DT12H`, `PT30M`).
+    /// designators are hours, minutes and seconds (`PT8H`, `P1DT12H`, `PT30M`); seconds may
+    /// carry up to three decimals (`PT0.05S`).
     pub fn parse(s: &str) -> Result<Period> {
         let s = s.trim();
         let bad = || Error::InvalidTerm { term: "period".into(), value: s.into() };
@@ -100,12 +97,17 @@ impl Period {
         let mut num = String::new();
         let mut time_part = false;
         for c in body.chars() {
-            if c.is_ascii_digit() || (c == '-' && num.is_empty()) {
+            if c.is_ascii_digit() || (c == '-' && num.is_empty()) || (c == '.' && time_part) {
                 num.push(c);
                 continue;
             }
             if c == 'T' && !time_part && num.is_empty() {
                 time_part = true;
+                continue;
+            }
+            if time_part && c == 'S' {
+                p.millis += parse_millis(&num).ok_or_else(bad)?;
+                num.clear();
                 continue;
             }
             let n: i64 = num.parse().map_err(|_| bad())?;
@@ -117,9 +119,8 @@ impl Period {
                 (false, 'M') => p.months += n,
                 (false, 'W') => p.days += 7 * n,
                 (false, 'D') => p.days += n,
-                (true, 'H') => p.seconds += 3600 * n,
-                (true, 'M') => p.seconds += 60 * n,
-                (true, 'S') => p.seconds += n,
+                (true, 'H') => p.millis += 3_600_000 * n,
+                (true, 'M') => p.millis += 60_000 * n,
                 _ => return Err(bad()),
             }
         }
@@ -130,7 +131,7 @@ impl Period {
     }
 
     pub fn times(&self, k: i64) -> Period {
-        Period { years: self.years * k, months: self.months * k, days: self.days * k, seconds: self.seconds * k }
+        Period { years: self.years * k, months: self.months * k, days: self.days * k, millis: self.millis * k }
     }
 
     /// `dt + self`: months (incl. years) first with end-of-month clamping, then days, then the
@@ -141,8 +142,8 @@ impl Period {
         if self.days != 0 {
             t += Duration::days(self.days);
         }
-        if self.seconds != 0 {
-            t += Duration::seconds(self.seconds);
+        if self.millis != 0 {
+            t += Duration::milliseconds(self.millis);
         }
         t
     }
@@ -164,53 +165,86 @@ impl fmt::Display for Period {
         if self.days != 0 || self.is_zero() {
             write!(f, "{}D", self.days)?;
         }
-        if self.seconds != 0 {
-            write!(f, "T{}S", self.seconds)?;
+        if self.millis != 0 {
+            let sign = if self.millis < 0 { "-" } else { "" };
+            let (s, ms) = (self.millis.abs() / 1000, self.millis.abs() % 1000);
+            write!(f, "T{sign}{s}")?;
+            if ms != 0 {
+                write!(f, ".{ms:03}")?;
+            }
+            write!(f, "S")?;
         }
         Ok(())
     }
 }
 
+/// Milliseconds from a decimal number of seconds with at most three decimals (`"0.05"` → 50).
+fn parse_millis(s: &str) -> Option<i64> {
+    let (whole, frac) = s.split_once('.').unwrap_or((s, ""));
+    if whole.is_empty() || frac.len() > 3 || !frac.bytes().all(|b| b.is_ascii_digit()) || (s.contains('.') && frac.is_empty()) {
+        return None;
+    }
+    let negative = whole.starts_with('-');
+    let whole: i64 = whole.parse().ok()?;
+    let frac: i64 = format!("{frac:0<3}").parse().ok()?;
+    whole.checked_mul(1000)?.checked_add(if negative { -frac } else { frac })
+}
+
 /// The time axis of a ledger that counts in ticks (block heights, slots): tick `k` is the engine
-/// time `genesis + k × seconds_per_tick`.
+/// time `genesis + k × tick length`. The default tick is [`DEFAULT_TICK_MILLIS`](Self::DEFAULT_TICK_MILLIS).
 ///
 /// Contract terms and observations stay in engine time; the clock converts at the boundary, and
-/// gives cycles as a number of ticks. With `seconds_per_tick = 1` the axis is purely logical,
-/// which is all the margined types (FUTUR, PERP) need: they never measure elapsed time. Types
-/// that accrue interest read year fractions off the engine time, so for them the mapping has to
-/// follow the ledger's real slot length.
+/// gives cycles as a number of ticks. The margined types (FUTUR, PERP) never measure elapsed
+/// time, so for them the axis is purely logical and any tick length works. Types that accrue
+/// interest read year fractions off the engine time, so for them the mapping has to follow the
+/// ledger's real slot length.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TickClock {
     genesis: DateTime,
-    seconds_per_tick: i64,
+    millis_per_tick: i64,
 }
 
 impl TickClock {
-    pub fn new(genesis: DateTime, seconds_per_tick: i64) -> Result<TickClock> {
-        if seconds_per_tick <= 0 {
-            return Err(Error::invalid("secondsPerTick", seconds_per_tick));
+    /// Length of a tick unless one is given: 50 ms.
+    pub const DEFAULT_TICK_MILLIS: i64 = 50;
+
+    /// A clock with the default tick length.
+    pub fn new(genesis: DateTime) -> TickClock {
+        TickClock { genesis, millis_per_tick: Self::DEFAULT_TICK_MILLIS }
+    }
+
+    /// A clock with ticks of `millis_per_tick` milliseconds.
+    pub fn with_tick_millis(genesis: DateTime, millis_per_tick: i64) -> Result<TickClock> {
+        if millis_per_tick <= 0 {
+            return Err(Error::invalid("millisPerTick", millis_per_tick));
         }
-        Ok(TickClock { genesis, seconds_per_tick })
+        Ok(TickClock { genesis, millis_per_tick })
+    }
+
+    pub fn millis_per_tick(&self) -> i64 {
+        self.millis_per_tick
     }
 
     /// Engine time of `tick`; `None` when it is beyond the representable range.
     pub fn time(&self, tick: u64) -> Option<DateTime> {
-        let seconds = i64::try_from(tick).ok()?.checked_mul(self.seconds_per_tick)?;
-        self.genesis.checked_add_signed(Duration::try_seconds(seconds)?)
+        let millis = i64::try_from(tick).ok()?.checked_mul(self.millis_per_tick)?;
+        self.genesis.checked_add_signed(Duration::try_milliseconds(millis)?)
     }
 
     /// The tick at `time`; `None` before genesis or between two ticks.
     pub fn tick(&self, time: DateTime) -> Option<u64> {
-        let seconds = (time - self.genesis).num_seconds();
-        let on_a_tick = seconds >= 0 && seconds % self.seconds_per_tick == 0;
-        on_a_tick.then(|| (seconds / self.seconds_per_tick) as u64)
+        let elapsed = time - self.genesis;
+        let millis = elapsed.num_milliseconds();
+        let on_a_tick =
+            millis >= 0 && millis % self.millis_per_tick == 0 && elapsed == Duration::milliseconds(millis);
+        on_a_tick.then(|| (millis / self.millis_per_tick) as u64)
     }
 
     /// A cycle of `ticks` ticks, e.g. for `cycleOfFunding` (its `Display` is the term's value).
     pub fn cycle(&self, ticks: u64) -> Result<Cycle> {
-        let seconds = i64::try_from(ticks).ok().and_then(|n| n.checked_mul(self.seconds_per_tick));
-        match seconds {
-            Some(s) if s > 0 => Ok(Cycle { period: Period::seconds(s), stub: Stub::Short }),
+        let millis = i64::try_from(ticks).ok().and_then(|n| n.checked_mul(self.millis_per_tick));
+        match millis {
+            Some(ms) if ms > 0 => Ok(Cycle { period: Period::millis(ms), stub: Stub::Short }),
             _ => Err(Error::invalid("cycle", format!("{ticks} ticks"))),
         }
     }
@@ -475,15 +509,25 @@ mod tests {
 
     #[test]
     fn period_time_part() {
-        assert_eq!(Period::parse("PT8H").unwrap().seconds, 8 * 3600);
-        assert_eq!(Period::parse("PT90M").unwrap().seconds, 90 * 60);
+        assert_eq!(Period::parse("PT8H").unwrap().millis, 8 * 3_600_000);
+        assert_eq!(Period::parse("PT90M").unwrap().millis, 90 * 60_000);
         let p = Period::parse("P1DT12H30M15S").unwrap();
-        assert_eq!((p.days, p.seconds), (1, 12 * 3600 + 30 * 60 + 15));
+        assert_eq!((p.days, p.millis), (1, (12 * 3600 + 30 * 60 + 15) * 1000));
         // Before the `T`, `H` is still the ACTUS half year and `M` a month.
         assert_eq!(Period::parse("P1H").unwrap().months, 6);
-        assert_eq!(Period::parse("P1MT1M").unwrap(), Period { months: 1, seconds: 60, ..Period::ZERO });
+        assert_eq!(Period::parse("P1MT1M").unwrap(), Period { months: 1, millis: 60_000, ..Period::ZERO });
         assert!(Period::parse("PT").is_err());
         assert!(Period::parse("PT1D").is_err());
+        // Seconds take up to three decimals; nothing else takes any.
+        assert_eq!(Period::parse("PT0.05S").unwrap(), Period::millis(50));
+        assert_eq!(Period::parse("PT1.5S").unwrap(), Period::millis(1500));
+        for bad in ["PT0.0005S", "PT.5S", "PT1.S", "PT1.5M", "P1.5D", "PT1.2.3S"] {
+            assert!(Period::parse(bad).is_err(), "{bad}");
+        }
+        for text in ["PT0.050S", "PT1.500S", "PT28800S", "P1DT0.001S"] {
+            let p = Period::parse(text).unwrap();
+            assert_eq!(Period::parse(&p.to_string()).unwrap(), p, "{text}");
+        }
         assert_eq!(p.add_to(d("2026-01-01T00:00:00")), d("2026-01-02T12:30:15"));
         let c = Cycle::parse("PT8H").unwrap();
         let s = schedule(Some(d("2026-01-01")), d("2026-01-02"), Some(c), EndOfMonthConvention::SD, true);
@@ -492,19 +536,27 @@ mod tests {
 
     #[test]
     fn tick_clock() {
-        let clock = TickClock::new(d("2026-01-01"), 12).unwrap();
+        // The default tick is 50 ms: 20 to the second.
+        let clock = TickClock::new(d("2026-01-01"));
+        assert_eq!(clock.millis_per_tick(), 50);
         assert_eq!(clock.time(0), Some(d("2026-01-01")));
-        assert_eq!(clock.time(300), Some(d("2026-01-01T01:00:00")));
-        assert_eq!(clock.tick(d("2026-01-01T01:00:00")), Some(300));
-        assert_eq!(clock.tick(d("2026-01-01T00:00:05")), None);
-        assert_eq!(clock.tick(d("2025-12-31T23:59:48")), None);
+        assert_eq!(clock.time(1), Some(d("2026-01-01T00:00:00.050")));
+        assert_eq!(clock.time(72_000), Some(d("2026-01-01T01:00:00")));
+        assert_eq!(clock.tick(d("2026-01-01T01:00:00")), Some(72_000));
+        assert_eq!(clock.tick(d("2026-01-01T00:00:00.150")), Some(3));
+        assert_eq!(clock.tick(d("2026-01-01T00:00:00.020")), None);
+        assert_eq!(clock.tick(d("2026-01-01T00:00:00.0505")), None);
+        assert_eq!(clock.tick(d("2025-12-31T23:59:59.950")), None);
         assert_eq!(clock.time(u64::MAX), None);
         // A cycle in ticks round-trips through its term value.
-        let c = clock.cycle(5).unwrap();
-        assert_eq!(c.period, Period::seconds(60));
+        let c = clock.cycle(1).unwrap();
+        assert_eq!((c.period, c.to_string().as_str()), (Period::millis(50), "PT0.050SL1"));
         assert_eq!(Cycle::parse(&c.to_string()).unwrap(), c);
         assert!(clock.cycle(0).is_err());
-        assert!(TickClock::new(d("2026-01-01"), 0).is_err());
+        // Another tick length, e.g. a 12-second block.
+        let blocks = TickClock::with_tick_millis(d("2026-01-01"), 12_000).unwrap();
+        assert_eq!(blocks.time(300), Some(d("2026-01-01T01:00:00")));
+        assert!(TickClock::with_tick_millis(d("2026-01-01"), 0).is_err());
     }
 
     #[test]

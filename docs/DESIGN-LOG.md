@@ -95,9 +95,9 @@ and `../actus-core/` (2020 Java reference, ACTUS Core License — read for cross
 - PERP (perpetual future) added on the `jonas/research` branch as the first type outside the
   ACTUS specification, ahead of the Phase 2 list in D4, specified in `docs/notes/perp.md`.
   `Period` gained a time part for it.
-- Tick resolution, same branch: events order by (time, sequence) instead of time plus the
-  sequence in seconds, `time::TickClock` maps ledger ticks to engine time, and `stream` windows
-  start at a day. D8 stands: time is still `chrono::NaiveDateTime`; a tick is a point on it.
+- Tick resolution, same branch: events order by (time in milliseconds, sequence) instead of time
+  plus the sequence in seconds, `time::TickClock` maps ledger ticks to engine time with a default
+  tick of 50 ms, and `stream` windows start at a minute. D8 stands: time is still `chrono::NaiveDateTime`; a tick is a point on it.
   Details and what is still open are under "Ticks" in `docs/notes/perp.md`.
 - Combined contracts (SWAPS, CAPFL) are true state machines: their state holds the children's
   states (`any::AnyState`), and each parent event lists the child events it applies

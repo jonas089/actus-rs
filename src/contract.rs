@@ -104,7 +104,8 @@ pub struct Projection<'a, const S: u32, M: ContractModel<S>> {
     last_key: Option<i64>,
     /// `None` once the full schedule is known (bounded contract or schedule exhausted).
     horizon: Option<DateTime>,
-    window_days: i64,
+    /// Length of the next schedule window.
+    window_len: chrono::Duration,
     /// Error from generating the first schedule window, reported on the first `next`.
     pending_error: Option<Error>,
     done: bool,
@@ -114,8 +115,9 @@ pub struct Projection<'a, const S: u32, M: ContractModel<S>> {
 /// the status date without any new event, the stream ends.
 const MAX_EMPTY_HORIZON_YEARS: i64 = 200;
 
-/// The first window is a day, so a contract with a cycle of seconds yields its first events
-/// without scheduling a year of them; each further window doubles, up to this length.
+/// The first window is a minute, so a contract with a cycle of one tick yields its first events
+/// without scheduling a year of them; each further window doubles, up to `MAX_WINDOW_DAYS`.
+const FIRST_WINDOW_SECONDS: i64 = 60;
 const MAX_WINDOW_DAYS: i64 = 16 * 366;
 
 impl<'a, const S: u32, M: ContractModel<S>> Projection<'a, S, M> {
@@ -128,7 +130,7 @@ impl<'a, const S: u32, M: ContractModel<S>> Projection<'a, S, M> {
             window: Vec::new(),
             last_key: None,
             horizon: None,
-            window_days: 1,
+            window_len: chrono::Duration::seconds(FIRST_WINDOW_SECONDS),
             pending_error: None,
             done: false,
         };
@@ -139,7 +141,7 @@ impl<'a, const S: u32, M: ContractModel<S>> Projection<'a, S, M> {
             }
             Err(_) => {
                 // No natural end: generate the first window.
-                p.horizon = Some(crate::time::Period::days(1).add_to(model.common().status_date));
+                p.horizon = Some(model.common().status_date + p.window_len);
                 p.pending_error = p.refill_window();
             }
         }
@@ -156,8 +158,8 @@ impl<'a, const S: u32, M: ContractModel<S>> Projection<'a, S, M> {
                     let fresh: Vec<Event<S>> =
                         evs.iter().filter(|e| self.last_key.is_none_or(|k| e.key() > k)).cloned().collect();
                     self.window = evs;
-                    let next = crate::time::Period::days(self.window_days).add_to(h);
-                    self.window_days = (self.window_days * 2).min(MAX_WINDOW_DAYS);
+                    self.window_len = (self.window_len * 2).min(chrono::Duration::days(MAX_WINDOW_DAYS));
+                    let next = h + self.window_len;
                     self.horizon = if h >= limit && fresh.is_empty() { None } else { Some(next) };
                     if !fresh.is_empty() {
                         self.buffer.extend(fresh);

@@ -294,7 +294,7 @@ fn a_credit_event_marks_the_position_without_cash() {
     assert_eq!(ce.state.get(StateVariable::ContractPerformance), Some(Value::Performance(ContractPerformance::DF)));
 }
 
-/// A position on a ledger with 12-second blocks: settled every block, funded every 5 blocks.
+/// A position on a ledger with the default 50 ms tick: settled every tick, funded every 5.
 fn tick_terms(clock: &TickClock) -> serde_json::Value {
     with(
         terms("p", "LG"),
@@ -306,15 +306,15 @@ fn tick_terms(clock: &TickClock) -> serde_json::Value {
 }
 
 #[test]
-fn events_at_block_resolution_keep_their_order() {
-    let clock = TickClock::new(d("2026-01-01T00:00:00"), 12).unwrap();
+fn events_at_tick_resolution_keep_their_order() {
+    let clock = TickClock::new(d("2026-01-01T00:00:00"));
     let mut md = MarketData::new();
-    // The price rises by 1 per block from 100 at genesis; funding is 0.001 per period.
+    // The price rises by 1 per tick from 100 at genesis; funding is 0.001 per period.
     for tick in 1..=12u64 {
         md.insert("ASSET", clock.time(tick).unwrap(), F::from_int(100 + tick as i64));
         md.insert("ASSET-FR", clock.time(tick).unwrap(), f("0.001"));
     }
-    // Liquidated at block 12 at 90, two blocks after the second funding.
+    // Liquidated at tick 12 (600 ms in) at 90, two ticks after the second funding.
     md.events.push(ObservedEvent {
         contract_id: "p".into(),
         event_type: EventType::TD,
@@ -325,8 +325,8 @@ fn events_at_block_resolution_keep_their_order() {
 
     let res = contract(tick_terms(&clock)).project(None, &md).unwrap();
     let got: Vec<_> = res.iter().map(|r| (clock.tick(r.event.time).unwrap(), r.event.event_type, r.payoff)).collect();
-    // Each block's settlement pays 2 × 1. Funding at blocks 5 and 10 is 2 × price × 0.001 and
-    // comes before that block's settlement. The close pays 2 × (90 - 112).
+    // Each tick's settlement pays 2 × 1. Funding at ticks 5 and 10 is 2 × price × 0.001 and
+    // comes before that tick's settlement. The close pays 2 × (90 - 112).
     let mut expected = Vec::new();
     for tick in 1..=12u64 {
         if tick % 5 == 0 {
@@ -341,8 +341,8 @@ fn events_at_block_resolution_keep_their_order() {
 }
 
 #[test]
-fn a_block_resolution_stream_starts_without_scheduling_a_year() {
-    let clock = TickClock::new(d("2026-01-01T00:00:00"), 12).unwrap();
+fn a_tick_resolution_stream_starts_without_scheduling_a_year() {
+    let clock = TickClock::new(d("2026-01-01T00:00:00"));
     let mut md = MarketData::new();
     for tick in 1..=4u64 {
         md.insert("ASSET", clock.time(tick).unwrap(), F::from_int(100 + tick as i64));
