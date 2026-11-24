@@ -54,23 +54,31 @@ pub fn add_months(dt: DateTime, months: i64) -> DateTime {
     }
 }
 
-/// A calendar period (years/months/days), as in ISO 8601 durations used by ACTUS cycles.
+/// A period as in ISO 8601 durations: a calendar part (years/months/days), which ACTUS cycles
+/// use, and a time part held in seconds (`PT8H`), which ACTUS does not use but intraday cycles
+/// such as perpetual funding need.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Period {
     pub years: i64,
     pub months: i64,
     pub days: i64,
+    pub seconds: i64,
 }
 
 impl Period {
-    pub const ZERO: Period = Period { years: 0, months: 0, days: 0 };
+    pub const ZERO: Period = Period { years: 0, months: 0, days: 0, seconds: 0 };
+
+    pub const fn years(years: i64) -> Period {
+        Period { years, months: 0, days: 0, seconds: 0 }
+    }
 
     pub fn is_zero(&self) -> bool {
         *self == Self::ZERO
     }
 
     /// Parse an ISO 8601 period like `P1M`, `P3M`, `P1Y`, `P2W`, `P15D`, `P0D`, `P1Y6M`.
-    /// ACTUS extensions `Q` (quarter) and `H` (half year) are accepted.
+    /// ACTUS extensions `Q` (quarter) and `H` (half year) are accepted. After a `T` the
+    /// designators are hours, minutes and seconds (`PT8H`, `P1DT12H`, `PT30M`).
     pub fn parse(s: &str) -> Result<Period> {
         let s = s.trim();
         let bad = || Error::InvalidTerm { term: "period".into(), value: s.into() };
@@ -82,39 +90,51 @@ impl Period {
         }
         let mut p = Period::ZERO;
         let mut num = String::new();
+        let mut time_part = false;
         for c in body.chars() {
             if c.is_ascii_digit() || (c == '-' && num.is_empty()) {
                 num.push(c);
                 continue;
             }
+            if c == 'T' && !time_part && num.is_empty() {
+                time_part = true;
+                continue;
+            }
             let n: i64 = num.parse().map_err(|_| bad())?;
             num.clear();
-            match c {
-                'Y' => p.years += n,
-                'H' => p.months += 6 * n,
-                'Q' => p.months += 3 * n,
-                'M' => p.months += n,
-                'W' => p.days += 7 * n,
-                'D' => p.days += n,
+            match (time_part, c) {
+                (false, 'Y') => p.years += n,
+                (false, 'H') => p.months += 6 * n,
+                (false, 'Q') => p.months += 3 * n,
+                (false, 'M') => p.months += n,
+                (false, 'W') => p.days += 7 * n,
+                (false, 'D') => p.days += n,
+                (true, 'H') => p.seconds += 3600 * n,
+                (true, 'M') => p.seconds += 60 * n,
+                (true, 'S') => p.seconds += n,
                 _ => return Err(bad()),
             }
         }
-        if !num.is_empty() {
+        if !num.is_empty() || body.ends_with('T') {
             return Err(bad());
         }
         Ok(p)
     }
 
     pub fn times(&self, k: i64) -> Period {
-        Period { years: self.years * k, months: self.months * k, days: self.days * k }
+        Period { years: self.years * k, months: self.months * k, days: self.days * k, seconds: self.seconds * k }
     }
 
-    /// `dt + self`: months (incl. years) first with end-of-month clamping, then days.
+    /// `dt + self`: months (incl. years) first with end-of-month clamping, then days, then the
+    /// time part.
     pub fn add_to(&self, dt: DateTime) -> DateTime {
         let months = self.years * 12 + self.months;
         let mut t = if months != 0 { add_months(dt, months) } else { dt };
         if self.days != 0 {
             t += Duration::days(self.days);
+        }
+        if self.seconds != 0 {
+            t += Duration::seconds(self.seconds);
         }
         t
     }
@@ -135,6 +155,9 @@ impl fmt::Display for Period {
         }
         if self.days != 0 || self.is_zero() {
             write!(f, "{}D", self.days)?;
+        }
+        if self.seconds != 0 {
+            write!(f, "T{}S", self.seconds)?;
         }
         Ok(())
     }
@@ -395,6 +418,23 @@ mod tests {
 
     fn d(s: &str) -> DateTime {
         parse_datetime(s).unwrap()
+    }
+
+    #[test]
+    fn period_time_part() {
+        assert_eq!(Period::parse("PT8H").unwrap().seconds, 8 * 3600);
+        assert_eq!(Period::parse("PT90M").unwrap().seconds, 90 * 60);
+        let p = Period::parse("P1DT12H30M15S").unwrap();
+        assert_eq!((p.days, p.seconds), (1, 12 * 3600 + 30 * 60 + 15));
+        // Before the `T`, `H` is still the ACTUS half year and `M` a month.
+        assert_eq!(Period::parse("P1H").unwrap().months, 6);
+        assert_eq!(Period::parse("P1MT1M").unwrap(), Period { months: 1, seconds: 60, ..Period::ZERO });
+        assert!(Period::parse("PT").is_err());
+        assert!(Period::parse("PT1D").is_err());
+        assert_eq!(p.add_to(d("2026-01-01T00:00:00")), d("2026-01-02T12:30:15"));
+        let c = Cycle::parse("PT8H").unwrap();
+        let s = schedule(Some(d("2026-01-01")), d("2026-01-02"), Some(c), EndOfMonthConvention::SD, true);
+        assert_eq!(s, vec![d("2026-01-01"), d("2026-01-01T08:00:00"), d("2026-01-01T16:00:00"), d("2026-01-02")]);
     }
 
     #[test]

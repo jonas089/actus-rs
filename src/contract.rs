@@ -135,7 +135,7 @@ impl<'a, const S: u32, M: ContractModel<S>> Projection<'a, S, M> {
             }
             Err(_) => {
                 // No natural end: generate the first window.
-                p.horizon = Some(crate::time::Period { years: 1, months: 0, days: 0 }.add_to(model.common().status_date));
+                p.horizon = Some(crate::time::Period::years(1).add_to(model.common().status_date));
                 p.pending_error = p.refill_window();
             }
         }
@@ -145,14 +145,14 @@ impl<'a, const S: u32, M: ContractModel<S>> Projection<'a, S, M> {
     /// Extend the schedule horizon until new events appear (or give up).
     fn refill_window(&mut self) -> Option<Error> {
         let start = self.model.common().status_date;
-        let limit = crate::time::Period { years: MAX_EMPTY_HORIZON_YEARS, months: 0, days: 0 }.add_to(start);
+        let limit = crate::time::Period::years(MAX_EMPTY_HORIZON_YEARS).add_to(start);
         while let Some(h) = self.horizon {
             match self.model.schedule(Some(h), self.obs) {
                 Ok(evs) => {
                     let fresh: Vec<Event<S>> =
                         evs.iter().filter(|e| self.last_key.is_none_or(|k| e.key() > k)).cloned().collect();
                     self.window = evs;
-                    let next = crate::time::Period { years: self.window_years, months: 0, days: 0 }.add_to(h);
+                    let next = crate::time::Period::years(self.window_years).add_to(h);
                     self.window_years = (self.window_years * 2).min(16);
                     self.horizon = if h >= limit && fresh.is_empty() { None } else { Some(next) };
                     if !fresh.is_empty() {

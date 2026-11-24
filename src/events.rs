@@ -41,6 +41,8 @@ pub enum EventType {
     DV,
     /// Purchase.
     PRD,
+    /// Funding payment (PERP; not an ACTUS event).
+    FND,
     /// Margin call.
     MR,
     /// Termination.
@@ -76,6 +78,7 @@ impl EventType {
             IPFL => 45,
             FP => 60,
             DV => 70,
+            FND => 75,
             MR => 80,
             RRF | RR => 100,
             PRF => 105,
@@ -112,6 +115,7 @@ impl FromStr for EventType {
             "RR" => RR,
             "DV" => DV,
             "PRD" => PRD,
+            "FND" => FND,
             "MR" => MR,
             "TD" => TD,
             "SC" => SC,

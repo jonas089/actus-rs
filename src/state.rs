@@ -10,7 +10,8 @@ use crate::time::DateTime;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
-/// The ACTUS state variables (dictionary `states`), plus exercise states used by options/futures.
+/// The ACTUS state variables (dictionary `states`), plus exercise states used by options/futures
+/// and the settlement price of a perpetual.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum StateVariable {
@@ -35,6 +36,8 @@ pub enum StateVariable {
     BoundaryCrossedFlag,
     BoundaryLeg1ActiveFlag,
     BoundaryLeg2ActiveFlag,
+    /// Price a perpetual position was last settled at (PERP; not an ACTUS state).
+    SettlementPrice,
 }
 
 impl StateVariable {
@@ -63,6 +66,7 @@ impl StateVariable {
             BoundaryCrossedFlag => "boundaryCrossedFlag",
             BoundaryLeg1ActiveFlag => "boundaryLeg1ActiveFlag",
             BoundaryLeg2ActiveFlag => "boundaryLeg2ActiveFlag",
+            SettlementPrice => "settlementPrice",
         }
     }
 
@@ -90,6 +94,7 @@ impl StateVariable {
             BoundaryCrossedFlag,
             BoundaryLeg1ActiveFlag,
             BoundaryLeg2ActiveFlag,
+            SettlementPrice,
         ]
         .into_iter()
         .find(|v| v.name() == s)
@@ -185,6 +190,7 @@ const ALL_VARIABLES: &[StateVariable] = &[
     StateVariable::BoundaryCrossedFlag,
     StateVariable::BoundaryLeg1ActiveFlag,
     StateVariable::BoundaryLeg2ActiveFlag,
+    StateVariable::SettlementPrice,
 ];
 
 /// Helper macro: implement [`StateView`] for a struct by listing `field => StateVariable` pairs.

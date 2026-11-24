@@ -11,6 +11,7 @@ use crate::contracts::csh::CshState;
 use crate::contracts::fxout::FxoutState;
 use crate::contracts::loan::LoanState;
 use crate::contracts::optns::ExerciseState;
+use crate::contracts::perp::PerpState;
 use crate::contracts::stk::OwnershipState;
 use crate::contracts::swaps::SwapsState;
 use crate::contracts::swppv::SwppvState;
@@ -39,6 +40,7 @@ pub enum AnyState<const S: u32> {
     Exercise(ExerciseState<S>),
     /// CEG, CEC.
     CreditEnhancement(CreditEnhancementState<S>),
+    Perp(PerpState<S>),
 }
 
 macro_rules! each_state {
@@ -54,6 +56,7 @@ macro_rules! each_state {
             AnyState::Capfl($s) => $e,
             AnyState::Exercise($s) => $e,
             AnyState::CreditEnhancement($s) => $e,
+            AnyState::Perp($s) => $e,
         }
     };
 }
@@ -94,6 +97,7 @@ impl<const S: u32> Contract<S> {
             Contract::Futur(c) => AnyState::Exercise(c.initial_state(obs)?),
             Contract::Ceg(c) => AnyState::CreditEnhancement(c.initial_state(obs)?),
             Contract::Cec(c) => AnyState::CreditEnhancement(c.initial_state(obs)?),
+            Contract::Perp(c) => AnyState::Perp(c.initial_state(obs)?),
         })
     }
 
@@ -153,6 +157,7 @@ impl<const S: u32> Contract<S> {
             Contract::Futur(c) => go!(c, Exercise),
             Contract::Ceg(c) => go!(c, CreditEnhancement),
             Contract::Cec(c) => go!(c, CreditEnhancement),
+            Contract::Perp(c) => go!(c, Perp),
         }
     }
 }

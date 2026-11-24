@@ -5,6 +5,8 @@ A deterministic state-transition engine for financial contracts, implementing th
 
 - **All 18 contract types of the ACTUS technical specification**: PAM, LAM, LAX, NAM, ANN, CLM,
   UMP, CSH, STK, COM, FXOUT, SWPPV, SWAPS, CAPFL, OPTNS, FUTUR, CEG, CEC.
+- **One type beyond ACTUS**: PERP, a perpetual future with funding payments and optional
+  margining, specified in `docs/notes/perp.md`.
 - **Passes all 276 official ACTUS test cases**, compared to ~1e-9 (the reference Java test harness
   only compared integer parts).
 - **Fixed-point arithmetic**: `Fixed<S>` with `S` decimals (default 18), `i128` storage, 256-bit
@@ -62,6 +64,7 @@ explanation. Run one with `cargo run --example <name>`.
 | FUTUR | `futur_commodity_future` | Jet fuel future, long and short side |
 | CEG | `ceg_loan_guarantee` | 80% guarantee on an SME loan that defaults |
 | CEC | `cec_collateral` | Gold-secured loan, default before and after a price crash |
+| PERP | `perp_perpetual_future` | 2 ETH perpetual with 8-hour funding, liquidated on the second day |
 
 ## Conformance tests
 

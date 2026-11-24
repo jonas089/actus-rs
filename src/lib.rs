@@ -39,13 +39,15 @@ use contracts::lam::{AmortizerKind, AmortizerTerms};
 use contracts::lax::LaxTerms;
 use contracts::optns::OptnsTerms;
 use contracts::pam::PamTerms;
+use contracts::perp::PerpTerms;
 use contracts::stk::StkTerms;
 use contracts::swaps::SwapsTerms;
 use contracts::swppv::SwppvTerms;
 use contracts::ump::UmpTerms;
 use terms::RawTerms;
 
-/// Any supported ACTUS contract.
+/// Any supported contract: the ACTUS types, plus the perpetual future (`PERP`), which ACTUS
+/// does not define.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Contract<const S: u32 = { fixed::DEFAULT_SCALE }> {
     Pam(PamTerms<S>),
@@ -66,6 +68,7 @@ pub enum Contract<const S: u32 = { fixed::DEFAULT_SCALE }> {
     Lax(LaxTerms<S>),
     Nam(AmortizerTerms<S>),
     Ann(AmortizerTerms<S>),
+    Perp(PerpTerms<S>),
 }
 
 macro_rules! dispatch {
@@ -89,6 +92,7 @@ macro_rules! dispatch {
             Contract::Lax($c) => $e,
             Contract::Nam($c) => $e,
             Contract::Ann($c) => $e,
+            Contract::Perp($c) => $e,
         }
     };
 }
@@ -121,6 +125,7 @@ impl<const S: u32> Contract<S> {
             "LAX" => Contract::Lax(LaxTerms::parse(raw)?),
             "NAM" => Contract::Nam(AmortizerTerms::parse(raw, AmortizerKind::Nam)?),
             "ANN" => Contract::Ann(AmortizerTerms::parse(raw, AmortizerKind::Ann)?),
+            "PERP" => Contract::Perp(PerpTerms::parse(raw)?),
             other => return Err(Error::UnknownContractType(other.to_string())),
         })
     }

@@ -15,6 +15,7 @@ pub mod loan;
 pub mod nam;
 pub mod optns;
 pub mod pam;
+pub mod perp;
 pub mod stk;
 pub mod swaps;
 pub mod swppv;

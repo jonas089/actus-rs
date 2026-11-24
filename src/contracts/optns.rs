@@ -46,22 +46,9 @@ pub struct ExerciseTerms<const S: u32> {
 
 impl<const S: u32> ExerciseTerms<S> {
     pub fn parse(raw: &RawTerms) -> Result<Self> {
-        let structure = parse_contract_structure(raw)?;
-        let underlying = structure
-            .iter()
-            .find(|r| r.role == ReferenceRole::UDL)
-            .map(|r| match &r.object {
-                ReferenceObject::MarketObject(m) => Ok(m.clone()),
-                ReferenceObject::Contract(c) => c
-                    .text("marketObjectCode")
-                    .ok_or_else(|| Error::invalid("contractStructure", "underlying contract without marketObjectCode")),
-                ReferenceObject::ContractId(id) => Ok(id.clone()),
-            })
-            .transpose()?
-            .ok_or_else(|| Error::MissingTerm("contractStructure (underlying)".into()))?;
         Ok(ExerciseTerms {
             maturity_date: raw.req_date("maturityDate")?,
-            underlying,
+            underlying: underlying_market_object(raw)?,
             exercise_date: raw.date("exerciseDate")?,
             exercise_amount: raw.fixed("exerciseAmount")?,
             settlement_period: raw.period("settlementPeriod")?.unwrap_or(Period::ZERO),
@@ -138,6 +125,22 @@ impl<const S: u32> ExerciseTerms<S> {
         s.status_date = t;
         Ok(Some(payoff))
     }
+}
+
+/// Market object code of the underlying: the `contractStructure` reference with role `UDL`.
+pub(crate) fn underlying_market_object(raw: &RawTerms) -> Result<String> {
+    parse_contract_structure(raw)?
+        .iter()
+        .find(|r| r.role == ReferenceRole::UDL)
+        .map(|r| match &r.object {
+            ReferenceObject::MarketObject(m) => Ok(m.clone()),
+            ReferenceObject::Contract(c) => c
+                .text("marketObjectCode")
+                .ok_or_else(|| Error::invalid("contractStructure", "underlying contract without marketObjectCode")),
+            ReferenceObject::ContractId(id) => Ok(id.clone()),
+        })
+        .transpose()?
+        .ok_or_else(|| Error::MissingTerm("contractStructure (underlying)".into()))
 }
 
 /// First exercise event observed for this contract on or before maturity.

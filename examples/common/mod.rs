@@ -94,6 +94,7 @@ fn short(v: StateVariable) -> &'static str {
         InterestScalingMultiplier => "interest scale",
         ExerciseAmount => "exercise amt",
         ExerciseDate => "exercise date",
+        SettlementPrice => "settled at",
         ContractPerformance => "performance",
         _ => v.name(),
     }
@@ -150,7 +151,8 @@ pub fn describe(t: EventType) -> &'static str {
         RR => "rate reset from an observed market rate",
         DV => "dividend payment",
         PRD => "purchase: the position is bought",
-        MR => "margin call",
+        FND => "funding payment between the long and the short side",
+        MR => "margin call: the gain or loss since the last settlement is paid",
         TD => "termination: the position is sold or closed early",
         SC => "scaling index fixing (index-linked notional/interest)",
         IPCB => "interest calculation base fixing",
